@@ -30,7 +30,7 @@ class Car:
     def getHorsepower(self):
         return self.__horsepower
     
-    def         teeringAngle(self):
+    def getSteeringAngle(self):
         return self.__steeringAngle
     
     def getImagePath(self):
@@ -167,7 +167,7 @@ class Driver:
     def completeRun(self, score, spins):
         self.recordRun(score)
         self.__car.useTyres()
-        self.__car.daamge(Driver.wear_per_run + spins * Driver.spin_damage)
+        self.__car.damage(Driver.wear_per_run + spins * Driver.spin_damage)
         
     def sweetSpotWidth(self):
         width = (18 + self.__skill * 0.15
@@ -277,7 +277,7 @@ class Team:
     
     def upgradeCar(self, driver):
         car = driver.getCar()
-        car.checkCanUpgrade()
+        car.checkUpgradeValid()
         cost = car.getUpgradeCost()
         self.spend(cost)
         car.upgradeTune()

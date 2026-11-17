@@ -9,6 +9,7 @@ muted = "#8a8aa8"
 warn = "#ffb020"
 good = "#39ff88"
 bad = "#ff4d4d"
+text = "#e6e6f0"
 
 main_choices = ["Bahnschrift", "Segoe UI", "DejaVu Sans", "Arial"]
 mono_choices = ["Consolas", "DejaVu Sans Mono", "Courier New"]
