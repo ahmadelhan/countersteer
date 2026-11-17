@@ -20,7 +20,7 @@ def scoreSection(markerX, sweetSpot, halfwidth):
         return round(60 * (1 - over / zone)), False
     return 0, True
 
-class DriftRunWindow(tk.TopLevel):
+class DriftRunWindow(tk.Toplevel):
     def __init__(self, master, driver, onFinish):
         super().__init__(master)
         self.__driver = driver
@@ -98,4 +98,60 @@ class DriftRunWindow(tk.TopLevel):
         low = bar_left + bar_width - self.__halfwidth + 60
         high = bar_left + bar_width - self.__halfwidth - 20
         self.__sweetSpot = random.randint(low, high)
+        self.__markerX = bar_left
         self.__waitingForPress = True
+        self.__drawBar()
+        self.__tick()
+        
+    def __tick(self):
+        if not self.__waitingForPress:
+            return
+        self.__markerX += marker_speed
+        if self.__markerX > bar_left + bar_width:
+            self.__endSection(0, True, "PLACEHOLDER - RACE LINE LOST")
+            return
+        self.__canvas.coords(self.__marker, self.__markerX - 3, 30, self.__markerX + 3, 80)
+        self.__afterId = self.after(tick_ms, self.__tick)
+            
+    def __press(self):
+        if not self.__waitingForPress:
+            return
+        score, spun = scoreSection(self.__markerX, self.__sweetSpot, self.__halfwidth)
+        if spun:
+            message = "PLACEHOLDER - SPINOUT"
+        elif score >= 90:
+            message = f"PLACEHOLDER - PERFECT"
+        elif score >= 75:
+            message = f"PLACEHOLDER - CLEAN"
+        else:
+            message = f"PLACEHOLDER - BAD"
+        self.__endSection(score, spun, message)
+            
+    def __endSection(self, score, spun, message):
+        self.__waitingForPress = False
+        if self.__afterId is not None:
+            self.after_cancel(self.__afterId)
+            self.__afterId = None
+        self.__scores.append(score)
+        if spun:
+            self.__spins += 1
+        self.__resultLabel.config(text = message, fg = theme.bad if spun else theme.good)
+        self.__drawBar()
+        self.__section += 1
+        if self.__section < len(sections):
+            self.__afterId = self.after(900, self.__startSection)
+        else:
+            self.__after = self.after(900, self.__finish)
+            
+    def __finish(self):
+        total = round(sum(self.__scores) / len(self.__scores))
+        self.grab_release()
+        self.destroy()
+        self.__onFinish(total, self.__spins)
+        
+    def __abandon(self):
+        self.__waitingForPress = False
+        if self.__afterId is not None:
+            self.after_cancel(self.__afterId)
+        self.grab_release()
+        self.destroy()
