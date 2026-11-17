@@ -25,7 +25,7 @@ class DriftRunWindow(tk.Toplevel):
         super().__init__(master)
         self.__driver = driver
         self.__onFinish = onFinish
-        self.__halfwidth = driver.getSweetSpotHalfWidth()
+        self.__halfwidth = driver.sweetSpotWidth()
         self.__section = 0
         self.__scores = []
         self.__spins = 0
@@ -39,7 +39,7 @@ class DriftRunWindow(tk.Toplevel):
         self.resizable(False, False)
         self.protocol("WM_DELETE_WINDOW", self.__abandon)
         
-        tk.label(self, text = f"{driver.getName()} | {driver.getCar().getModel()}",
+        tk.Label(self, text = f"{driver.getName()} | {driver.getCar().getModel()}",
                  font = theme.fonts["heading"], fg = theme.cyan, bg = theme.bg) .pack(pady = (12, 0))
         self.__sectionLabel = tk.Label(self, text = "", font = theme.fonts["title"],
                                        fg = theme.pink, bg = theme.bg)
@@ -53,7 +53,7 @@ class DriftRunWindow(tk.Toplevel):
                                       font = theme.fonts["body"], fg = theme.muted, bg = theme.bg)
         self.__resultLabel.pack(pady = 4)
         
-        self.__hitButton = tk.Button(self, text = "Press SPACE",
+        self.__hitButton = tk.Button(self, text = "Press SPACE", font = theme.fonts["heading"],
                                      bg = theme.pink, fg = "white", activebackground = theme.cyan,
                                      relief = "flat", width = 16, command = self.__press)
         self.__hitButton.pack(pady = (4, 14))
@@ -69,7 +69,7 @@ class DriftRunWindow(tk.Toplevel):
         self.update_idletasks()
         x = master.winfo_rootx() + (master.winfo_width() - self.winfo_reqwidth()) // 2
         y = master.winfo_rooty() + (master.winfo_height() - self.winfo_reqheight()) // 3
-        self.geometry(f"+{max(x, 0)} + {max(y, 0 )}")
+        self.geometry(f"+{max(x, 0)}+{max(y, 0 )}")
         
     def __drawBar(self):
         c = self.__canvas
@@ -78,7 +78,7 @@ class DriftRunWindow(tk.Toplevel):
                            fill = theme.panel, outline = theme.panel_light)
         outer = self.__halfwidth * spin_zone
         
-        c.create_rectangle(self.__sweetSpot - outer, 40, self.__sweetSpot + outer,
+        c.create_rectangle(self.__sweetSpot - outer, 40, self.__sweetSpot + outer, 70,
                            fill = theme.panel_light, outline = "")
         c.create_rectangle(self.__sweetSpot - self.__halfwidth, 40,
                            self.__sweetSpot + self.__halfwidth, 70,
@@ -88,14 +88,14 @@ class DriftRunWindow(tk.Toplevel):
         for i, name in enumerate(sections):
             text = f"{name}: {self.__scores[i]}" if i < len(self.__scores) else f"{name}: --"
             c.create_text(bar_left + 90 + i * 170, 15, text = text,
-                          fill = theme.TEXT, font = theme.fonts["mono"])
+                          fill = theme.text, font = theme.fonts["mono"])
         self.__marker = c.create_rectangle(self.__markerX - 3, 30, self.__markerX + 3, 80,
                                            fill = theme.pink, outline = "white")
         
     def __startSection(self):
         self.__afterId = None
         self.__sectionLabel.config(text = sections[self.__section])
-        low = bar_left + bar_width - self.__halfwidth + 60
+        low = bar_left + self.__halfwidth + 60
         high = bar_left + bar_width - self.__halfwidth - 20
         self.__sweetSpot = random.randint(low, high)
         self.__markerX = bar_left
@@ -141,7 +141,7 @@ class DriftRunWindow(tk.Toplevel):
         if self.__section < len(sections):
             self.__afterId = self.after(900, self.__startSection)
         else:
-            self.__after = self.after(900, self.__finish)
+            self.__afterId = self.after(900, self.__finish)
             
     def __finish(self):
         total = round(sum(self.__scores) / len(self.__scores))

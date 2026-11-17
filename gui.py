@@ -21,10 +21,10 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 sort_options = ["Best score", "Average score", "Skill", "Condition"]
 
 def centreOver (window, master):
-    window.update__idletasks()
+    window.update_idletasks()
     x = master.winfo_rootx() + (master.winfo_width() - window.winfo_reqwidth()) // 2
     y = master.winfo_rooty() + (master.winfo_height() - window.winfo_reqheight()) // 2
-    window.geometry(f"+{max(x, 0)} + {max(y, 0)}")
+    window.geometry(f"+{max(x, 0)}+{max(y, 0)}")
     
 def makeButton(parent, text, command, colour = theme.panel_light, width = None):
     button = tk.Button(parent, text = text, command = command, font = theme.fonts["bodyBold"],
@@ -49,7 +49,19 @@ class Countersteer:
         root.configure(bg = theme.bg)
         root.resizable(False, False)
         
-        # PLACEHOLDER FUNCTIONS
+        self.setupStyles()
+        self.buildMenu()
+        self.buildHeader()
+        self.notebook = ttk.Notebook(root)
+        self.notebook.pack(fill = "both", expand = True, padx = 12, pady = (0, 6))
+        self.buildGarageTab()
+        self.buildShopTab()
+        self.buildLeaderboardTab()
+        self.statusLabel = tk.Label(root, text = "Welcome to the paddock.", anchor = "w",
+                                    font = theme.fonts["small"], fg = theme.muted, bg = theme.bg)
+        self.statusLabel.pack(fill = "x", padx = 14, pady = (0, 8))
+
+        self.refresh()
     
     def setupStyles(self):
         style = ttk.Style()
@@ -58,26 +70,26 @@ class Countersteer:
         style.configure("TNotebook.Tab", background = theme.panel, foreground = theme.muted,
                         font = theme.fonts["bodyBold"], padding = (18, 8), borderwidth = 0)
         style.map("TNotebook.Tab",
-                  background =[("selected"), theme.pink],
-                  foreground = [("selected"), "white"])
+                  background =[("selected", theme.pink)],
+                  foreground = [("selected", "white")])
         style.configure("Treeview", background = theme.panel, fieldbackground = theme.panel,
-                        foreground = theme.TEXT, font = theme.fonts["body"],
+                        foreground = theme.text, font = theme.fonts["body"],
                         borderwidth = 0)
         style.map("Treeview", background = [("selected", theme.pink)])
         style.configure("Treeview.Heading", background = theme.panel_light,
                         foreground = theme.cyan, font = theme.fonts["bodyBold"],
                         relief = "flat")
         style.configure("TCombobox", fieldbackground = theme.panel_light,
-                        background = theme.panel_light, foreground = theme.TEXT,
+                        background = theme.panel_light, foreground = theme.text,
                         arrowcolor = theme.cyan)
         style.map("TCombobox",
-                  fieldbackground = [("readonly"), theme.panel_light],
-                  foreground = [("readonly", theme.TEXT)],
-                  selectbackground = [("readonly"), theme.panel_light],
-                  selectforeground = [("readonly", theme.TEXT)])
-        self.root.option_add("TCombobox*Listbox.background", theme.panel)
-        self.root.option_add("TCombobox*Listbox.foreground", theme.TEXT)
-        self.root.option_add("TCombobox*Listbox.selectBackground", theme.pink)
+                  fieldbackground = [("readonly", theme.panel_light)],
+                  foreground = [("readonly", theme.text)],
+                  selectbackground = [("readonly", theme.panel_light)],
+                  selectforeground = [("readonly", theme.text)])
+        self.root.option_add("*TCombobox*Listbox.background", theme.panel)
+        self.root.option_add("*TCombobox*Listbox.foreground", theme.text)
+        self.root.option_add("*TCombobox*Listbox.selectBackground", theme.pink)
         
     def buildMenu(self):
             menuBar = tk.Menu(self.root)
@@ -101,7 +113,7 @@ class Countersteer:
         header.pack(fill = "x", padx = 14, pady = (10, 8))
         tk.Label(header, text="Countersteer", font = theme.fonts["title"],
                  fg = theme.pink, bg = theme.bg).pack(side = "left")
-        right = tk.Frame(header, bg = theme.BG)
+        right = tk.Frame(header, bg = theme.bg)
         right.pack(side ="right")
         tk.Label(right, text=self.team.getName().upper(), font = theme.fonts["small"],
                  fg = theme.muted, bg = theme.bg).pack(anchor = "e")
@@ -139,7 +151,7 @@ class Countersteer:
         for row, field in enumerate(fields, start = 1):
             tk.Label(driverPanel, text = field, font = theme.fonts["body"], fg = theme.muted,
                      bg = theme.panel, width = 12, anchor = "w").grid(row = row, column = 0, sticky = "w", pady = 3)
-            value = tk.Label(driverPanel, text = "", font = theme.fonts["bodyBold"], fg=theme.TEXT,
+            value = tk.Label(driverPanel, text = "", font = theme.fonts["bodyBold"], fg=theme.text,
                             bg = theme.panel, width = 16, anchor = "w")
             value.grid(row = row, column = 1, sticky = "w", pady = 3)
             self.driverFields[field] = value
@@ -172,7 +184,7 @@ class Countersteer:
         tk.Label(shopPanel, text = "WORKSHOP", font = theme.fonts["heading"],
                  fg=theme.pink, bg=theme.panel).pack(anchor = "w")
         self.shopDriverLabel = tk.Label(shopPanel, text = "", font = theme.fonts["body"],
-                                        fg = theme.TEXT, bg = theme.panel, justify = "left")
+                                        fg = theme.text, bg = theme.panel, justify = "left")
         self.shopDriverLabel.pack(anchor = "w", pady = (4, 12))
 
         self.tyreButton = makeButton(shopPanel, "", self.buyTyres, width = 26)
@@ -213,7 +225,7 @@ class Countersteer:
         self.readyOnlyVar = tk.IntVar(value = 0)
         tk.Checkbutton(controls, text = "Only drivers ready to run", variable = self.readyOnlyVar,
                        command = self.refreshLeaderboard, font = theme.fonts["body"],
-                       fg = theme.TEXT, bg = theme.bg, selectcolor = theme.panel,
+                       fg = theme.text, bg = theme.bg, selectcolor = theme.panel,
                        activebackground = theme.bg, activeforeground=theme.cyan).pack(side = "left", padx = 12)
         makeButton(controls, "Show top driver", self.showTopDriver,
                    colour = theme.pink).pack(side = "right")
@@ -269,12 +281,12 @@ class Countersteer:
         car = driver.getCar()
         self.shopDriverLabel.config(
             text=f"{driver.getName()}\n{car.getModel()}\n"
-                 f"Condition {car.getCondition()}%  |  Tyres {car.getTyreSets()}  |  Tune {car.getTuneLevel()}")
+                 f"Condition {car.getCondition()}%  |  Tyres {car.getTyresets()}  |  Tune {car.getTuneLevel()}")
         self.tyreButton.config(text=f"Buy tyre set  (€{Team.tyre_price:,})")
         repairCost = car.getRepairCost()
         self.repairButton.config(text=f"Repair car  (€{repairCost:,})" if repairCost
                                  else "Repair car  (no damage)")
-        if car.getTuneLevel() >= Car.MAX_TUNE:
+        if car.getTuneLevel() >= Car.max_tune:
             self.upgradeButton.config(text="Upgrade tune  (MAX)")
         else:
             self.upgradeButton.config(
@@ -286,7 +298,7 @@ class Countersteer:
         self.table.delete(*self.table.get_children())
         drivers = self.team.getSortedDrivers(self.sortVar.get())
         if self.readyOnlyVar.get() == 1:
-            drivers = [d for d in drivers if d.getCar().isReadyToRun()]
+            drivers = [d for d in drivers if d.getCar().isReady()]
         for rank, driver in enumerate(drivers, start=1):
             car = driver.getCar()
             try:
@@ -294,12 +306,12 @@ class Countersteer:
                 average = driver.getAverageScore()
             except NoRunsRecorded:
                 best = average = "--"
-            status = "Ready" if car.isReadyToRun() else "Needs Shop"
+            status = "Ready" if car.isReady() else "Needs Shop"
             self.table.insert("", "end", iid=driver.getName(), values=(
                 rank, driver.getName(), car.getModel(), driver.getSkill(),
                 driver.getRunsCompleted(), best, average,
-                f"{car.getCondition()}%", car.getTyreSets(), status))
-        ready = len(self.team.getDriversReadyToRun())
+                f"{car.getCondition()}%", car.getTyresets(), status))
+        ready = len(self.team.getDriversReady())
         self.readyLabel.config(
             text=f"Ready to run: {ready} of {self.team.getSize()} drivers   "
                  f"(double-click a driver to open them in the garage)")
@@ -343,10 +355,10 @@ class Countersteer:
             c.create_text(20, y, text=label, anchor="w", font=theme.fonts["small"], fill=theme.muted)
             c.create_rectangle(110, y - 6, 410, y + 6, fill=theme.panel_light, outline="")
             c.create_rectangle(110, y - 6, 110 + 300 * value / maximum, y + 6, fill=colour, outline="")
-            c.create_text(420, y, text=text, anchor="w", font=theme.fonts["mono"], fill=theme.TEXT)
+            c.create_text(420, y, text=text, anchor="w", font=theme.fonts["mono"], fill=theme.text)
             y += 26
-        tyres = car.getTyreSets()
-        c.create_text(20, y, text="TYRES", anchor="w", font=theme.FONTS["small"], fill=theme.muted)
+        tyres = car.getTyresets()
+        c.create_text(20, y, text="TYRES", anchor="w", font=theme.fonts["small"], fill=theme.muted)
         c.create_text(110, y, text=("● " * tyres) if tyres else "NONE LEFT", anchor="w",
                       font=theme.fonts["bodyBold"], fill=theme.cyan if tyres else theme.bad)
         
@@ -417,7 +429,7 @@ class Countersteer:
     def startRun(self):
         driver = self.currentDriver()
         try:
-            driver.getCar().checkReadyToRun()
+            driver.getCar().checkCarCondition()
         except NoTyresLeft as error:
             messagebox.showerror("No tyres left", str(error))
             return
@@ -548,7 +560,7 @@ class Countersteer:
             "Three sections: entry, angle, exit. Missing any skillcheck spins the car, causing mechanical damage.\n\n"
             "SHOP: buy tyres, repair damage and upgrade tune. Better tuning and skill "
             "make the skillcheck easier.\n\n"
-            f"A car needs tyres and be at least {Car.MIN_RUN_CONDITION}% condition to run.")
+            f"A car needs tyres and be at least {Car.min_run_condition}% condition to run.")
 
 
 class SignDriverDialog(tk.Toplevel):
@@ -565,13 +577,13 @@ class SignDriverDialog(tk.Toplevel):
         tk.Label(self, text = "Name", font=theme.fonts["body"], fg = theme.muted,
                  bg = theme.bg).grid(row = 1, column = 0, sticky = "w", pady = 4)
         self.nameEntry = tk.Entry(self, font=theme.fonts["body"], bg = theme.panel_light,
-                                  fg = theme.TEXT, insertbackground = theme.TEXT, relief = "flat", width = 24)
+                                  fg = theme.text, insertbackground = theme.text, relief = "flat", width = 24)
         self.nameEntry.grid(row = 1, column = 1, pady = 4)
 
         tk.Label(self, text = "Skill (1-100)", font=theme.fonts["body"], fg=theme.muted,
                  bg = theme.bg).grid(row = 2, column = 0, sticky = "w", pady = 4)
         self.skillEntry = tk.Entry(self, font = theme.fonts["body"], bg = theme.panel_light,
-                                   fg = theme.TEXT, insertbackground = theme.TEXT, relief = "flat", width = 24)
+                                   fg = theme.text, insertbackground = theme.text, relief = "flat", width = 24)
         self.skillEntry.grid(row = 2, column = 1, pady = 4)
 
         tk.Label(self, text="Car", font=theme.fonts["body"], fg=theme.muted,
