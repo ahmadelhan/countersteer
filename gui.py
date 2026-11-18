@@ -6,7 +6,8 @@ import theme
 from data import createStartingTeam, makeCar, signingFee, wageFor, car_catalogue
 from models import Driver, Team, Car
 from minigame import DriftRunWindow
-from exceptions import (
+from menu import MainMenu # v0.12
+from exceptions import ( 
     NoTyresLeft,
     CarDamaged,
     InsufficientFunds,
@@ -37,8 +38,9 @@ def makeButton(parent, text, command, colour = theme.panel_light, width = None):
 
 class Countersteer:
     
-    def __init__(self, root):
+    def __init__(self, root, onMainMenu = None): # v0.12
         self.root = root
+        self.onMainMenu = onMainMenu # v0.12
         self.team = createStartingTeam()
         self.current = 0
         self.runningDriver = None
@@ -102,7 +104,8 @@ class Countersteer:
             teamMenu.add_separator()
             teamMenu.add_command(label = "Reset", command = self.resetTeam)
             teamMenu.add_separator()
-            teamMenu.add_command(label = "Exit", command = self.root.destroy)
+            teamMenu.add_command(label = "Back to main menu", command = self.backToMainMenu) # v0.12
+            teamMenu.add_command(label = "Exit", command = self.root.destroy) 
     
             helpMenu = tk.Menu(menuBar, tearoff=0)
             menuBar.add_cascade(label = "Help", menu = helpMenu)
@@ -551,8 +554,14 @@ class Countersteer:
                                 f"{top.getName()} leads with a best run of {top.getBestScore()}.")
         except NoRunsRecorded as error:
             messagebox.showerror("No runs recorded", str(error))
+            
+    def backToMainMenu(self): # v0.12
+        if self.onMainMenu is None:
+            return
+        if messagebox.askyesno("Main menu", "Go back to the main menu?\nThis team's progress will be lost."):
+            self.onMainMenu()
 
-    def showHelp(self):
+    def showHelp(self): 
         messagebox.showinfo(
             "How to Play",
             "GARAGE: browse your drivers and start a qualy run.\n\n"
@@ -609,9 +618,28 @@ class SignDriverDialog(tk.Toplevel):
             self.grab_release()
             self.destroy()
 
+def clearWindow(root): # v0.12
+    root.config(menu = "")
+    for widget in root.winfo_children():
+        widget.destroy()
 
-if __name__ == "__main__":
+
+def showMainMenu(root): # v0.12
+    clearWindow(root)
+    MainMenu(root, onStart = lambda: startGame(root),
+             onExit = root.destroy).pack(fill = "both", expand = True)
+
+
+def startGame(root): # v0.12
+    clearWindow(root)
+    Countersteer(root, onMainMenu = lambda: showMainMenu(root))
+
+if __name__ == "__main__": 
     window = tk.Tk()
+    window.title("Countersteer") # v0.12
+    window.geometry("960x680") # v0.12
+    window.configure(bg = theme.bg) # v0.12
+    window.resizable(False, False) # v0.12
     theme.setupFonts(window)
-    Countersteer(window)
+    showMainMenu(window)
     window.mainloop()
