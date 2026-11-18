@@ -2,15 +2,16 @@ import os
 import random
 import tkinter as tk
 import tkinter.font as guiFont
+
 import theme
 
 width = 960
 height = 680
-horizon = 360               # y position of the horizon line
-vanish_x = width // 2
+horizon = 360               
+vanish_x = width // 2     
 frame_ms = 30              
-road_speed = 0.035          
-grid_lines = 12             # horizontal grid lines
+road_speed = 0.035         
+grid_lines = 12            
 
 kanji_choices = ["Yu Gothic UI", "Yu Gothic", "Meiryo", "MS Gothic",
                  "Noto Sans CJK JP", "Noto Sans JP"]
@@ -37,11 +38,12 @@ class MainMenu(tk.Frame):
         self.__options = [("START", self.__start), ("GUIDE", self.__openGuide),
                           ("EXIT", self.__exit)]
         self.__selected = 0
-        self.__phase = 0.0   
+        self.__phase = 0.0          
         self.__frame = 0
         self.__afterId = None
         self.__guideOpen = False
-        self.__logo = None
+        self.__images = {}         
+        self.__glowIsImage = False
 
         family = theme.fonts["title"][0]
         self.__bigFont = (family, 54, "bold")
@@ -65,7 +67,7 @@ class MainMenu(tk.Frame):
         self.bind("<Destroy>", lambda e: self.__stop())
 
         self.__animate()
-        
+
     def __pickKanjiFont(self, root):
         installed = set(guiFont.families(root))
         for family in kanji_choices:
@@ -73,14 +75,18 @@ class MainMenu(tk.Frame):
                 return family
         return theme.fonts["title"][0]
 
-    def __loadLogo(self):
-        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "images", "logo.png")
-        if os.path.exists(path):
-            try:
-                return tk.PhotoImage(file = path)
-            except tk.TclError:
-                return None
-        return None
+    def __loadImage(self, name):
+        """Load images/<name> once. Returns None if the file is missing or broken,
+        so the menu falls back to plain text instead of crashing."""
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "images", name)
+        if not os.path.exists(path):
+            return None
+        try:
+            image = tk.PhotoImage(file = path)
+        except tk.TclError:
+            return None
+        self.__images[name] = image
+        return image
     
     def __drawScenery(self):
         c = self.__canvas
@@ -91,8 +97,12 @@ class MainMenu(tk.Frame):
             size = rng.choice([1, 1, 2])
             c.create_oval(x, y, x + size, y + size, fill = theme.muted, outline = "")
 
-        c.create_text(width - 85, 215, text = "峠", font = self.__kanjiFont,
-                      fill = theme.panel_light)
+        kanji = self.__loadImage("kanji.png")
+        if kanji is not None:
+            c.create_image(width - 90, 210, image = kanji)
+        else:
+            c.create_text(width - 85, 215, text = "峠", font = self.__kanjiFont,
+                          fill = theme.panel_light)
 
         sunR = 120
         c.create_oval(vanish_x - sunR, horizon - sunR - 40, vanish_x + sunR, horizon + sunR - 40,
@@ -117,16 +127,23 @@ class MainMenu(tk.Frame):
 
     def __drawTitle(self):
         c = self.__canvas
-        self.__logo = self.__loadLogo()
-        if self.__logo is not None:
-            c.create_image(width // 2, 110, image = self.__logo)
-            return
-        c.create_text(width // 2 + 3, 93, text = "COUNTERSTEER", font = self.__bigFont,
-                      fill = theme.cyan, tags = "titleGlow")
-        c.create_text(width // 2, 90, text = "COUNTERSTEER", font = self.__bigFont,
-                      fill = theme.pink)
-        c.create_text(width // 2, 150, text = "D R I F T   T E A M   M A N A G E R",
-                      font = self.__subFont, fill = theme.text)
+        title = self.__loadImage("title.png")
+        glow = self.__loadImage("title_glow.png")
+        subtitle = self.__loadImage("subtitle.png")
+        if title is not None and glow is not None:
+            c.create_image(width // 2 + 5, 90 + 5, image = glow, tags = "titleGlow")
+            c.create_image(width // 2, 90, image = title)
+            self.__glowIsImage = True
+        else:
+            c.create_text(width // 2 + 3, 93, text = "COUNTERSTEER", font = self.__bigFont,
+                          fill = theme.cyan, tags = "titleGlow")
+            c.create_text(width // 2, 90, text = "COUNTERSTEER", font = self.__bigFont,
+                          fill = theme.pink)
+        if subtitle is not None:
+            c.create_image(width // 2, 172, image = subtitle)
+        else:
+            c.create_text(width // 2, 150, text = "D R I F T   T E A M   M A N A G E R",
+                          font = self.__subFont, fill = theme.text)
 
     def __drawOptions(self):
         c = self.__canvas
@@ -144,7 +161,7 @@ class MainMenu(tk.Frame):
                       text = "↑ ↓  select     ENTER  confirm", font = self.__smallFont,
                       fill = theme.muted)
         self.__highlightSelected()
-        
+
     def __animate(self):
         self.__phase = (self.__phase + road_speed) % 1.0
         self.__frame += 1
@@ -172,7 +189,7 @@ class MainMenu(tk.Frame):
                 continue
             c.create_line(vanish_x, self.__depthToY(start), vanish_x, self.__depthToY(end),
                           fill = theme.pink, width = 1 + 7 * start, tags = "road")
-
+            
         sunR = 120
         sunTop = horizon - 40 - sunR
         for i in range(5):
@@ -186,8 +203,11 @@ class MainMenu(tk.Frame):
         c.tag_raise("road", "ground")
 
         if self.__frame % 40 == 0:
-            glow = theme.cyan if (self.__frame // 40) % 2 == 0 else theme.panel_light
-            c.itemconfig("titleGlow", fill = glow)
+            on = (self.__frame // 40) % 2 == 0
+            if self.__glowIsImage:
+                c.itemconfig("titleGlow", state = "normal" if on else "hidden")
+            else:
+                c.itemconfig("titleGlow", fill = theme.cyan if on else theme.panel_light)
 
     def __stop(self):
         if self.__afterId is not None:
@@ -196,7 +216,7 @@ class MainMenu(tk.Frame):
             except tk.TclError:
                 pass
             self.__afterId = None
-
+            
     def __select(self, index):
         if self.__guideOpen:
             return
@@ -226,7 +246,7 @@ class MainMenu(tk.Frame):
             self.__closeGuide()
             return
         self.__options[self.__selected][1]()
-        
+
     def __start(self):
         self.__stop()
         self.__unbindKeys()
