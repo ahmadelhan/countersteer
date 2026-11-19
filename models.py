@@ -6,7 +6,9 @@ from exceptions import (
     DuplicateDriver,
     MinimumSquad,
     NoRunsRecorded,
-    MaxTune
+    MaxTune,
+    DraftIncomplete,    # v0.14
+    InvalidTeamName     # v0.14
 )
 
 class Car:
@@ -133,7 +135,7 @@ class Driver:
             return self.__car
         
     def getRunScores(self):
-            return self.__runScores
+            return list(self.__runScores) 
     
     def getRunsCompleted(self):
             return len(self.__runScores)
@@ -316,4 +318,82 @@ class Team:
         self.__budget = self.__startingBudget
         for driver in self.__drivers:
             driver.resetAll()
-                
+
+# v0.13
+class Draft:
+    team_size = 3
+    max_name_length = 24
+
+    def __init__(self, pool, budget):
+        self.__pool = pool         
+        self.__picked = []          # indexes
+        self.__budget = budget
+
+# getters
+    def getPoolSize(self):
+        return len(self.__pool)
+
+    def getDriver(self, index):
+        return self.__pool[index][0]
+
+    def getFee(self, index):
+        return self.__pool[index][1]
+
+    def getPicked(self):
+        return [self.__pool[i][0] for i in self.__picked]
+
+    def isPicked(self, index):
+        return index in self.__picked
+
+    def getBudget(self):
+        return self.__budget
+
+    def getBudgetLeft(self):
+        spent = sum(self.__pool[i][1] for i in self.__picked)
+        return self.__budget - spent
+# getters
+
+    def pick(self, index):
+        driver, fee = self.__pool[index]
+        if index in self.__picked:
+            raise DuplicateDriver(
+                f"{driver.getName()} is already on the team."
+            )
+        if len(self.__picked) >= Draft.team_size:
+            raise SquadFull(
+                f"You can only draft {Draft.team_size} drivers. Remove one."
+            )
+        if fee > self.getBudgetLeft():
+            raise InsufficientFunds(
+                f"{driver.getName()} costs €{fee:,}. "
+                f"€{self.getBudgetLeft():,} left."
+            )
+        self.__picked.append(index)
+
+    def unpick(self, index):
+        if index in self.__picked:
+            self.__picked.remove(index)
+
+    def checkTeamName(self, name):
+        name = name.strip()
+        if name == "":
+            raise InvalidTeamName("A team needs a name.")
+        if len(name) > Draft.max_name_length:
+            raise InvalidTeamName(
+                f"Team names can be at most {Draft.max_name_length} characters "
+                f"(current {len(name)})."
+            )
+        return name
+
+    def buildTeam(self, name):
+        name = self.checkTeamName(name)
+        if len(self.__picked) < Draft.team_size:
+            raise DraftIncomplete(
+                f"Draft {Draft.team_size} drivers before starting "
+                f"({len(self.__picked)} picked)."
+            )
+        team = Team(name, self.getBudgetLeft())
+        for driver in self.getPicked():
+            team.addDriver(driver)
+        return team
+# v0.13

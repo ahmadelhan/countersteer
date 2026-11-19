@@ -1,7 +1,7 @@
 import unittest
 
-from data import createStartingTeam, makeCar
-from models import Car, Driver, Team
+from data import createStartingTeam, makeCar, createDraftPool, draft_budget  # v0.13
+from models import Car, Driver, Team, Draft # v0.13
 from minigame import scoreSection
 from exceptions import (
     NoTyresLeft,
@@ -12,6 +12,8 @@ from exceptions import (
     DuplicateDriver,
     NoRunsRecorded,
     MaxTune,
+    DraftIncomplete,    # v0.13
+    InvalidTeamName, # v0.13
 )
 
 
@@ -164,6 +166,58 @@ class TestMiniGameScoring(unittest.TestCase):
     def test_way_off_is_a_spin(self):
         self.assertEqual(scoreSection(200, 100, 20), (0, True))
 
+# v0.13
+class TestDraft(unittest.TestCase):
+
+    def setUp(self):
+        self.draft = Draft(createDraftPool(), draft_budget)
+
+    def test_pick_takes_the_fee(self):
+        self.draft.pick(0)
+        self.assertEqual(self.draft.getBudgetLeft(), draft_budget - self.draft.getFee(0))
+
+    def test_pick_twice_raises_error(self):
+        self.draft.pick(0)
+        with self.assertRaises(DuplicateDriver):
+            self.draft.pick(0)
+
+    def test_fourth_pick_raises_error(self):
+        for index in (7, 8, 9):
+            self.draft.pick(index)
+        with self.assertRaises(SquadFull):
+            self.draft.pick(6)
+
+    def test_too_expensive_raises_error(self):
+        small = Draft(createDraftPool(), 5000)
+        with self.assertRaises(InsufficientFunds):
+            small.pick(0)
+
+    def test_unpick_refunds(self):
+        self.draft.pick(0)
+        self.draft.unpick(0)
+        self.assertEqual(self.draft.getBudgetLeft(), draft_budget)
+
+    def test_empty_name_raises_error(self):
+        with self.assertRaises(InvalidTeamName):
+            self.draft.buildTeam("   ")
+
+    def test_long_name_raises_error(self):
+        with self.assertRaises(InvalidTeamName):
+            self.draft.buildTeam("x" * (Draft.max_name_length + 1))
+
+    def test_incomplete_draft_raises_error(self):
+        self.draft.pick(0)
+        with self.assertRaises(DraftIncomplete):
+            self.draft.buildTeam("Midnight Club")
+
+    def test_build_team(self):
+        for index in (0, 1, 9):
+            self.draft.pick(index)
+        team = self.draft.buildTeam("  Midnight Club ")
+        self.assertEqual(team.getName(), "Midnight Club")
+        self.assertEqual(team.getSize(), 3)
+        self.assertEqual(team.getBudget(), self.draft.getBudgetLeft())
+# v0.13
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

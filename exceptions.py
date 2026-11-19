@@ -28,3 +28,11 @@ class MaxTune(GameError):
 class Bankrupt(GameError):
     pass
 
+# v0.13
+class DraftIncomplete(GameError):
+    pass
+
+
+class InvalidTeamName(GameError):
+    pass
+# v0.13
