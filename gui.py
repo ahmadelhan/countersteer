@@ -4,9 +4,12 @@ from tkinter import ttk, messagebox
 
 import theme
 from data import createStartingTeam, makeCar, signingFee, wageFor, car_catalogue
-from models import Driver, Team, Car
+from data import createDraftPool, draft_budget # v0.13
+from models import Driver, Team, Car, Draft  # v0.13 added Draft
 from minigame import DriftRunWindow
 from menu import MainMenu # v0.12
+from teamselect import TeamSelectScreen, DraftScreen  # v0.13
+import carcard 
 from exceptions import ( 
     NoTyresLeft,
     CarDamaged,
@@ -38,10 +41,10 @@ def makeButton(parent, text, command, colour = theme.panel_light, width = None):
 
 class Countersteer:
     
-    def __init__(self, root, onMainMenu = None): # v0.12
+    def __init__(self, root, team, onMainMenu = None): # v0.12 # v0.13 team passed as arg
         self.root = root
         self.onMainMenu = onMainMenu # v0.12
-        self.team = createStartingTeam()
+        self.team = team # v0.13 changed from createStartingTeam method
         self.current = 0
         self.runningDriver = None
         self.images = {}
@@ -319,18 +322,8 @@ class Countersteer:
             text=f"Ready to run: {ready} of {self.team.getSize()} drivers   "
                  f"(double-click a driver to open them in the garage)")
 
-    def loadCarImage(self, path): # IMAGE PATH - FOR FUTURE SPRITE USE
-        if path in self.images:
-            return self.images[path]
-        image = None
-        fullPath = os.path.join(BASE_DIR, path)
-        if path and os.path.exists(fullPath):
-            try:
-                image = tk.PhotoImage(file=fullPath)
-            except tk.TclError:
-                image = None
-        self.images[path] = image
-        return image
+    def loadCarImage(self, path):  # v0.13 moved to carcard.py
+        return carcard.loadCarImage(path, self.images)
     
     def drawCarCard(self, canvas, driver):
         car = driver.getCar()
@@ -372,17 +365,8 @@ class Countersteer:
             return theme.warn
         return theme.good
     
-    def drawSilhouette(self, c, x, y):
-        body = [0, 70, 6, 50, 60, 42, 105, 14, 195, 12, 245, 38, 300, 46, 306, 70]
-        c.create_polygon([v + (x if i % 2 == 0 else y) for i, v in enumerate(body)],
-                         fill=theme.panel_light, outline=theme.cyan, width = 2)
-        window = [112, 20, 190, 18, 230, 40, 100, 42]
-        c.create_polygon([v + (x if i % 2 == 0 else y) for i, v in enumerate(window)],
-                         fill = theme.bg, outline = theme.cyan)
-        for wheelX in (68, 240):
-            c.create_oval(x + wheelX - 19, y + 52, x + wheelX + 19, y + 90,
-                          fill = theme.bg, outline = theme.pink, width = 3)
-        c.create_line(x + 20, y + 96, x + 290, y + 96, fill = theme.pink, width = 3)  
+    def drawSilhouette(self, c, x, y):  # v0.13 moved to carcard.py
+        carcard.drawSilhouette(c, x, y)
    
     def firstCmd(self):
         self.current = 0
@@ -626,13 +610,25 @@ def clearWindow(root): # v0.12
 
 def showMainMenu(root): # v0.12
     clearWindow(root)
-    MainMenu(root, onStart = lambda: startGame(root),
+    MainMenu(root, onStart = lambda: showTeamSelect(root),  # v0.13 START -> team select
              onExit = root.destroy).pack(fill = "both", expand = True)
-
-
-def startGame(root): # v0.12
+    
+def showTeamSelect(root):  # v0.13
     clearWindow(root)
-    Countersteer(root, onMainMenu = lambda: showMainMenu(root))
+    TeamSelectScreen(root, createStartingTeam(), draft_budget,
+                     onPreset = lambda team: startGame(root, team),
+                     onCreate = lambda: showDraft(root),
+                     onBack = lambda: showMainMenu(root)).pack(fill = "both", expand = True)
+
+def showDraft(root):  # v0.13
+    clearWindow(root)
+    DraftScreen(root, Draft(createDraftPool(), draft_budget),
+                onDone = lambda team: startGame(root, team),
+                onBack = lambda: showTeamSelect(root)).pack(fill = "both", expand = True)
+
+def startGame(root, team): # v0.12 # v0.13 team passed in arg
+    clearWindow(root)
+    Countersteer(root, team, onMainMenu = lambda: showMainMenu(root)) # v0.13 team passed in arg
 
 if __name__ == "__main__": 
     window = tk.Tk()
