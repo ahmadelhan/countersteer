@@ -47,7 +47,8 @@ class Countersteer:
         self.team = team # v0.13 changed from createStartingTeam method
         self.current = 0
         self.runningDriver = None
-        self.images = {}
+        self.turntables = {}   # v0.14
+
         
         root.title("Countersteer")
         root.geometry("960x680")
@@ -167,9 +168,10 @@ class Countersteer:
         makeButton(driverPanel, "Check best score", self.checkBest).grid(
             row = 11, column = 0, columnspan = 2, sticky = "we", pady = 4)
     
-        self.garageCarCanvas = tk.Canvas(top, width = 520, height = 330, bg = theme.panel,
-                                        highlightthickness = 0)
+        self.garageCarCanvas = tk.Canvas(top, width = 520, height = 420, bg = theme.panel,  # v0.14 taller
+                                        highlightthickness = 0, cursor = "hand2")
         self.garageCarCanvas.pack(side = "left", fill = "both", expand = True)
+        self.turntables[self.garageCarCanvas] = carcard.Turntable(self.garageCarCanvas, "garage")  # v0.14
     
         bottom = tk.Frame(tab, bg = theme.bg)
         bottom.pack(fill = "x", pady = (0, 10))
@@ -206,9 +208,10 @@ class Countersteer:
                    colour=theme.pink).pack(fill = "x", pady = 4)
         makeButton(shopPanel, "Release current driver", self.releaseCurrent).pack(fill = "x", pady = 4)
 
-        self.shopCarCanvas = tk.Canvas(top, width = 520, height = 330, bg = theme.panel,
-                                       highlightthickness = 0)
+        self.shopCarCanvas = tk.Canvas(top, width = 520, height = 420, bg = theme.panel,  # v0.14 taller
+                                       highlightthickness = 0, cursor = "hand2")
         self.shopCarCanvas.pack(side = "left", fill = "both", expand = True)
+        self.turntables[self.shopCarCanvas] = carcard.Turntable(self.shopCarCanvas, "garage")  # v0.14
 
         bottom = tk.Frame(tab, bg = theme.bg)
         bottom.pack(fill = "x", pady = (0, 10))
@@ -322,8 +325,7 @@ class Countersteer:
             text=f"Ready to run: {ready} of {self.team.getSize()} drivers   "
                  f"(double-click a driver to open them in the garage)")
 
-    def loadCarImage(self, path):  # v0.13 moved to carcard.py
-        return carcard.loadCarImage(path, self.images)
+    # v0.14 deleted loadCar function
     
     def drawCarCard(self, canvas, driver):
         car = driver.getCar()
@@ -333,12 +335,12 @@ class Countersteer:
                       font = theme.fonts["heading"], fill = theme.cyan)
         c.create_text(20, 46, text=f"Driven by {driver.getName()}", anchor = "w",
                       font = theme.fonts["small"], fill = theme.muted)
-
-        image = self.loadCarImage(car.getImagePath())
-        if image is not None:
-            c.create_image(260, 120, image=image)
-        else:
-            self.drawSilhouette(c, 110, 70)
+        
+        # v0.14 spinning car
+        if not self.turntables[canvas].show(car.getImagePath(), 260, 168):
+            self.drawSilhouette(c, 110, 115)
+        c.create_text(500, 46, text = "drag to spin", anchor = "e",
+                      font = theme.fonts["small"], fill = theme.muted) 
 
         stats = [
             ("POWER", car.getHorsepower(), 400, f"{car.getHorsepower()} hp", theme.pink),
@@ -346,7 +348,7 @@ class Countersteer:
             ("TUNE", car.getTuneLevel(), Car.max_tune, f"{car.getTuneLevel()} / {Car.max_tune}", theme.cyan),
             ("CONDITION", car.getCondition(), 100, f"{car.getCondition()}%", self.conditionColour(car)),
         ]
-        y = 200
+        y = 296  # v0.14 edited value to make room
         for label, value, maximum, text, colour in stats:
             c.create_text(20, y, text=label, anchor="w", font=theme.fonts["small"], fill=theme.muted)
             c.create_rectangle(110, y - 6, 410, y + 6, fill=theme.panel_light, outline="")

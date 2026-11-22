@@ -239,11 +239,9 @@ class DraftScreen(tk.Frame):
             c.create_text(card_width - 16, 22, text = "DRAFTED", anchor = "e",
                           font = theme.fonts["bodyBold"], fill = theme.cyan)
 
-        image = carcard.loadCarImage(car.getImagePath(), self.__images)
-        if image is not None:
-            c.create_image(card_width // 2, 120, image = image)
-        else:
-            carcard.drawSilhouette(c, (card_width - 306) // 2, 62)
+        # v0.14
+        if not self.__turntable.show(car.getImagePath(), card_width // 2, 130):
+            carcard.drawSilhouette(c, (card_width - 306) // 2, 80)
 
         c.create_text(card_width // 2, 186, text = car.getModel().upper(), font = theme.fonts["heading"],
                       fill = theme.cyan)
