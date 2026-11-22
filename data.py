@@ -3,14 +3,14 @@ from models import Car, Driver, Team
 team_name = "Night Line Racing"
 starting_budget = 20000
 
-car_catalogue = {
-    "Nissan Silvia S15":   (250, 60, "images/s15.png"),
-    "Toyota AE86":         (130, 55, "images/ae86.png"),
-    "Toyota Supra MK4":    (320, 58, "images/supra.png"),
-    "Mazda RX-7 FD":       (280, 62, "images/rx7.png"),
-    "Nissan 350Z":         (290, 57, "images/350z.png"),
-    "Toyota Chaser JZX100": (300, 59, "images/chaser.png"),
-    "Nissan Silvia S13":   (205, 61, "images/s13.png"),
+car_catalogue = {   # v0.14
+    "Nissan Silvia S15":    (250, 60, "images/cars/s15"),
+    "Toyota AE86":          (130, 55, "images/cars/ae86"),
+    "Toyota Supra MK4":     (320, 58, "images/cars/mk4"),
+    "Mazda RX-7 FD":        (280, 62, "images/cars/rx7"),
+    "Nissan 350Z":          (290, 57, "images/cars/350z"),
+    "Toyota Chaser JZX100": (300, 59, "images/cars/chaser"),
+    "Nissan Skyline R34":   (280, 58, "images/cars/r34"),
 }
 
 def makeCar(model):
