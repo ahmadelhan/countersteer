@@ -5,11 +5,14 @@ from tkinter import ttk, messagebox
 import theme
 from data import createStartingTeam, makeCar, signingFee, wageFor, car_catalogue
 from data import createDraftPool, draft_budget # v0.13
+from data import createRivals  # v0.15
 from models import Driver, Team, Car, Draft  # v0.13 added Draft
+from models import Season  # v0.15
 from minigame import DriftRunWindow
 from menu import MainMenu # v0.12
 from teamselect import TeamSelectScreen, DraftScreen  # v0.13
 import carcard 
+from eventscreens import EventTab, SeasonEndScreen  # v0.15
 from exceptions import ( 
     NoTyresLeft,
     CarDamaged,
@@ -41,10 +44,12 @@ def makeButton(parent, text, command, colour = theme.panel_light, width = None):
 
 class Countersteer:
     
-    def __init__(self, root, team, onMainMenu = None): # v0.12 # v0.13 team passed as arg
+    def __init__(self, root, team, onMainMenu = None, onSeasonEnd = None): # v0.12 # v0.13 team passed as arg # v0.15 onSeasonEnd
         self.root = root
         self.onMainMenu = onMainMenu # v0.12
+        self.onSeasonEnd = onSeasonEnd # v0.15 (season, bankrupt)
         self.team = team # v0.13 changed from createStartingTeam method
+        self.season = Season(team, createRivals()) # v0.15
         self.current = 0
         self.runningDriver = None
         self.turntables = {}   # v0.14
@@ -62,6 +67,9 @@ class Countersteer:
         self.notebook.pack(fill = "both", expand = True, padx = 12, pady = (0, 6))
         self.buildGarageTab()
         self.buildShopTab()
+        self.eventTab = EventTab(self.notebook, self) # v0.15
+        self.notebook.add(self.eventTab, text = "EVENT") # v0.15
+        self.buildStandingsTab() # v0.15
         self.buildLeaderboardTab()
         self.statusLabel = tk.Label(root, text = "Welcome to the paddock.", anchor = "w",
                                     font = theme.fonts["small"], fg = theme.muted, bg = theme.bg)
@@ -102,11 +110,12 @@ class Countersteer:
             self.root.config(menu = menuBar)
     
             teamMenu = tk.Menu(menuBar, tearoff = 0)
+            self.teamMenu = teamMenu # v0.15 locked during round
             menuBar.add_cascade(label = "Team", menu = teamMenu)
             teamMenu.add_command(label = "New sign ons...", command = self.openSignDialog)
             teamMenu.add_command(label = "Release current driver", command = self.releaseCurrent)
             teamMenu.add_separator()
-            teamMenu.add_command(label = "Reset", command = self.resetTeam)
+            teamMenu.add_command(label = "Restart season", command = self.resetTeam) # v0.15
             teamMenu.add_separator()
             teamMenu.add_command(label = "Back to main menu", command = self.backToMainMenu) # v0.12
             teamMenu.add_command(label = "Exit", command = self.root.destroy) 
@@ -177,7 +186,7 @@ class Countersteer:
         bottom.pack(fill = "x", pady = (0, 10))
         nav, self.garagePosLabel = self.makeNavBar(bottom)
         nav.pack(side = "left")
-        makeButton(bottom, "START QUALIFYING RUN", self.startRun,
+        makeButton(bottom, "PRACTICE RUN", self.startRun, # v0.15
                     colour=theme.pink).pack(side = "right", ipadx = 10, ipady = 4)
         
     def buildShopTab(self):
@@ -217,6 +226,26 @@ class Countersteer:
         bottom.pack(fill = "x", pady = (0, 10))
         nav, self.shopPosLabel = self.makeNavBar(bottom)
         nav.pack(side = "left")
+
+    def buildStandingsTab(self): # v0.15
+        tab = tk.Frame(self.notebook, bg = theme.bg)
+        self.notebook.add(tab, text = "STANDINGS")
+        self.standingsLabel = tk.Label(tab, text = "", font = theme.fonts["bodyBold"], fg = theme.pink,
+                                       bg = theme.bg, anchor = "w")
+        self.standingsLabel.pack(fill = "x", pady = 10)
+        columns = ("pos", "driver", "team", "car", "points", "wins")
+        headings = ("#", "Driver", "Team", "Car", "Points", "Battle wins")
+        widths = (40, 180, 170, 200, 80, 100)
+        self.standingsTable = ttk.Treeview(tab, columns = columns, show = "headings", height = 14)
+        for column, heading, width in zip(columns, headings, widths):
+            self.standingsTable.heading(column, text = heading)
+            anchor = "w" if column in ("driver", "team", "car") else "center"
+            self.standingsTable.column(column, width = width, anchor = anchor)
+        self.standingsTable.tag_configure("mine", foreground = theme.cyan)
+        self.standingsTable.pack(fill = "both", expand = True)
+        self.historyLabel = tk.Label(tab, text = "", font = theme.fonts["small"], fg = theme.muted,
+                                     bg = theme.bg, anchor = "w", justify = "left")
+        self.historyLabel.pack(fill = "x", pady = 8)
 
     def buildLeaderboardTab(self):
         tab = tk.Frame(self.notebook, bg = theme.bg)
@@ -265,6 +294,32 @@ class Countersteer:
         self.refreshGarage()
         self.refreshShop()
         self.refreshLeaderboard()
+        self.refreshStandings() # v0.15
+        self.eventTab.refresh() # v0.15
+
+    def refreshStandings(self): # v0.15
+        self.standingsTable.delete(*self.standingsTable.get_children())
+        for place, driver in enumerate(self.season.getStandings(), start = 1):
+            mine = self.season.isTeamDriver(driver)
+            self.standingsTable.insert("", "end", tags = ("mine",) if mine else (), values = (
+                place, driver.getName(), self.team.getName() if mine else "Rival",
+                driver.getCar().getModel(), driver.getPoints(), driver.getBattleWins()))
+        done = self.season.getRoundsDone()
+        self.standingsLabel.config(text = f"CHAMPIONSHIP  -  after {done} of {Season.total_rounds} rounds")
+        self.historyLabel.config(text = "\n".join(self.season.getHistory()))
+
+    def setEventLock(self, locked): # v0.15
+        state = "disabled" if locked else "normal"
+        for index in (0, 1, 4):     # GARAGE, SHOP, LEADERBOARD
+            self.notebook.tab(index, state = state)
+        for label in ("New sign ons...", "Release current driver", "Restart season"):
+            self.teamMenu.entryconfig(label, state = state)
+        if locked:
+            self.notebook.select(2)
+
+    def endSeason(self, bankrupt): # v0.15
+        if self.onSeasonEnd is not None:
+            self.root.after(10, lambda: self.onSeasonEnd(self.season, bankrupt))
 
     def refreshGarage(self):
         driver = self.currentDriver()
@@ -526,11 +581,11 @@ class Countersteer:
         self.setStatus(f"Released {driver.getName()}.")
         self.refresh()
 
-    def resetTeam(self):
-        if messagebox.askyesno("Reset team",
-                               "Reset the budget, all scores and all cars?"):
-            self.team.resetAll()
-            self.setStatus("Team reset.")
+    def resetTeam(self): # v0.15 restarts season
+        if messagebox.askyesno("Restart season",
+                               "Restart the season? Budget, points, scores and cars all reset."):
+            self.season.resetAll()
+            self.setStatus("Season restarted.")
             self.refresh()
 
     def showTopDriver(self):
@@ -550,7 +605,10 @@ class Countersteer:
     def showHelp(self): 
         messagebox.showinfo(
             "How to Play",
-            "GARAGE: browse your drivers and start a qualy run.\n\n"
+            "GARAGE: browse your drivers and do practice runs.\n\n" # v0.15
+            "EVENT: press the big button to run each round: pay wages, qualify, "
+            f"then battle through the top-8 bracket. {Season.total_rounds} rounds make a season; "
+            "most points wins the title. Run out of money for wages and it's game over.\n\n"
             "QUALIFYING RUN: press SPACE when the pink marker is in the skillcheck. "
             "Three sections: entry, angle, exit. Missing any skillcheck spins the car, causing mechanical damage.\n\n"
             "SHOP: buy tyres, repair damage and upgrade tune. Better tuning and skill "
@@ -630,7 +688,14 @@ def showDraft(root):  # v0.13
 
 def startGame(root, team): # v0.12 # v0.13 team passed in arg
     clearWindow(root)
-    Countersteer(root, team, onMainMenu = lambda: showMainMenu(root)) # v0.13 team passed in arg
+    Countersteer(root, team, onMainMenu = lambda: showMainMenu(root), # v0.13 team passed in arg
+                 onSeasonEnd = lambda season, bankrupt: showSeasonEnd(root, season, bankrupt)) # v0.15
+
+def showSeasonEnd(root, season, bankrupt): # v0.15
+    clearWindow(root)
+    SeasonEndScreen(root, season, bankrupt,
+                    onMainMenu = lambda: showMainMenu(root),
+                    onNewSeason = lambda: showTeamSelect(root)).pack(fill = "both", expand = True)
 
 if __name__ == "__main__": 
     window = tk.Tk()
