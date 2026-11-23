@@ -1,4 +1,5 @@
 import os
+import gc # v0.16 quitGame
 import tkinter as tk
 from tkinter import ttk, messagebox
 
@@ -118,7 +119,7 @@ class Countersteer:
             teamMenu.add_command(label = "Restart season", command = self.resetTeam) # v0.15
             teamMenu.add_separator()
             teamMenu.add_command(label = "Back to main menu", command = self.backToMainMenu) # v0.12
-            teamMenu.add_command(label = "Exit", command = self.root.destroy) 
+            teamMenu.add_command(label = "Exit", command = lambda: quitGame(self.root)) # v0.16
     
             helpMenu = tk.Menu(menuBar, tearoff=0)
             menuBar.add_cascade(label = "Help", menu = helpMenu)
@@ -666,6 +667,12 @@ class SignDriverDialog(tk.Toplevel):
             self.grab_release()
             self.destroy()
 
+def quitGame(root): # v0.16
+    clearWindow(root)
+    carcard.clearFrames()   
+    gc.collect()            
+    root.destroy()
+
 def clearWindow(root): # v0.12
     root.config(menu = "")
     for widget in root.winfo_children():
@@ -675,7 +682,7 @@ def clearWindow(root): # v0.12
 def showMainMenu(root): # v0.12
     clearWindow(root)
     MainMenu(root, onStart = lambda: showTeamSelect(root),  # v0.13 START -> team select
-             onExit = root.destroy).pack(fill = "both", expand = True)
+             onExit = lambda: quitGame(root)).pack(fill = "both", expand = True) # v0.16
     
 def showTeamSelect(root):  # v0.13
     clearWindow(root)
@@ -708,5 +715,6 @@ if __name__ == "__main__":
     window.configure(bg = theme.bg) # v0.12
     window.resizable(False, False) # v0.12
     theme.setupFonts(window)
+    window.protocol("WM_DELETE_WINDOW", lambda: quitGame(window)) # v0.16  X button
     showMainMenu(window)
     window.mainloop()
