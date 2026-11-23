@@ -1,5 +1,6 @@
 import os
 import gc # v0.16 quitGame
+import sys # v0.18
 import tkinter as tk
 from tkinter import ttk, messagebox
 
@@ -678,6 +679,36 @@ class SignDriverDialog(tk.Toplevel):
             self.grab_release()
             self.destroy()
 
+icon_sizes = (16, 32, 48, 256) # v0.18 
+window_width = 960 # v0.17
+window_height = 680 # v0.17
+
+def centreWindow(root): # v0.19
+    x = (root.winfo_screenwidth() - window_width) // 2
+    y = (root.winfo_screenheight() - window_height) // 2
+    root.geometry(f"{window_width}x{window_height}+{max(x, 0)}+{max(y, 0)}")
+
+def setAppId(): # v0.18
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("countersteer.game")
+    except (OSError, AttributeError):
+        pass
+
+def setWindowIcon(root): # v0.18
+    images = []
+    for size in icon_sizes:
+        path = os.path.join(BASE_DIR, "images", f"icon_{size}.png")
+        if os.path.exists(path):
+            try:
+                images.append(tk.PhotoImage(file = path))
+            except tk.TclError:
+                pass
+    if images:
+        root.iconphoto(True, *images) 
+
 def quitGame(root): # v0.16
     clearWindow(root)
     carcard.clearFrames()   
@@ -720,9 +751,11 @@ def showSeasonEnd(root, season, bankrupt): # v0.15
                     onNewSeason = lambda: showTeamSelect(root)).pack(fill = "both", expand = True)
 
 if __name__ == "__main__": 
+    setAppId() # v0.19
     window = tk.Tk()
+    setWindowIcon(window) # v0.19
     window.title("Countersteer") # v0.12
-    window.geometry("960x680") # v0.12
+    centreWindow(window) # v0.19
     window.configure(bg = theme.bg) # v0.12
     window.resizable(False, False) # v0.12
     theme.setupFonts(window)
