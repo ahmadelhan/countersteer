@@ -343,5 +343,48 @@ class TestSeason(unittest.TestCase):
 # v0.15
 
 
+# v0.15 crew chief scoring
+class TestScoringAndOrders(unittest.TestCase):
+
+    def test_score_is_half_timing_half_rating(self):
+        driver = newDriver(skill = 50)
+        self.assertEqual(driver.blendScore(100), round(100 * 0.5 + driver.getRating() * 0.5))
+
+    def test_better_driver_scores_higher_with_same_timing(self):
+        rookie = newDriver("Rookie", 30)
+        star = Driver("Star", 90, 900, makeCar("Toyota Supra MK4"))
+        self.assertGreater(star.blendScore(80), rookie.blendScore(80))
+
+    def test_upgrade_raises_rating(self):
+        driver = newDriver()
+        before = driver.getRating()
+        driver.getCar().upgradeTune()
+        self.assertGreater(driver.getRating(), before)
+
+    def test_team_orders(self):
+        a, b = newDriver("A"), newDriver("B")
+        battle = Battle("Semi-final", a, b)
+        battle.awardTo(b)
+        self.assertIs(battle.getWinner(), b)
+        self.assertTrue(battle.isTeamOrder())
+        self.assertEqual(b.getBattleWins(), 1)
+        with self.assertRaises(ValueError):
+            battle.awardTo(a)
+
+    def test_rivals_improve_each_round(self):
+        first = Round(1, [], createRivals(), random.Random(1))
+        fourth = Round(4, [], createRivals(), random.Random(1))
+        self.assertEqual(first.getRivalBonus(), 0)
+        self.assertEqual(fourth.getRivalBonus(), 3 * Round.rival_improvement)
+
+    def test_team_battle_detected(self):
+        team = createStartingTeam()
+        current = Round(1, team.getDrivers(), createRivals(), random.Random(1))
+        a, b = team.getDriver(0), team.getDriver(1)
+        self.assertTrue(current.isTeamBattle(Battle("Final", a, b)))
+        self.assertFalse(current.isTeamBattle(Battle("Final", a, createRivals()[0])))
+# v0.15
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
