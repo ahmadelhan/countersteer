@@ -1,6 +1,6 @@
 import os
 import gc # v0.16 quitGame
-import sys # v0.18
+import sys # v0.17 setAppId
 import tkinter as tk
 from tkinter import ttk, messagebox
 
@@ -14,6 +14,8 @@ from minigame import DriftRunWindow
 from menu import MainMenu # v0.12
 from teamselect import TeamSelectScreen, DraftScreen  # v0.13
 import carcard 
+import animate # v0.19
+import sound # v0.19
 from eventscreens import EventTab, SeasonEndScreen  # v0.15
 from exceptions import ( 
     NoTyresLeft,
@@ -42,7 +44,7 @@ def makeButton(parent, text, command, colour = theme.panel_light, width = None):
                        cursor = "hand2")
     if width:
         button.config(width = width)
-    return button
+    return animate.styleButton(button, colour) # v0.19 hover glow + click pulse
 
 class Countersteer:
     
@@ -55,6 +57,7 @@ class Countersteer:
         self.current = 0
         self.runningDriver = None
         self.turntables = {}   # v0.14
+        self.shownBudget = None # v0.19 
 
         
         root.title("Countersteer")
@@ -122,6 +125,13 @@ class Countersteer:
             teamMenu.add_command(label = "Back to main menu", command = self.backToMainMenu) # v0.12
             teamMenu.add_command(label = "Exit", command = lambda: quitGame(self.root)) # v0.16
     
+            self.muteVar = tk.BooleanVar(value = sound.isMuted()) # v0.19
+            soundMenu = tk.Menu(menuBar, tearoff = 0,
+                                postcommand = lambda: self.muteVar.set(sound.isMuted()))
+            menuBar.add_cascade(label = "Sound", menu = soundMenu)
+            soundMenu.add_checkbutton(label = "Mute  (M)", variable = self.muteVar,
+                                      command = lambda: sound.setMuted(self.muteVar.get()))
+
             helpMenu = tk.Menu(menuBar, tearoff=0)
             menuBar.add_cascade(label = "Help", menu = helpMenu)
             helpMenu.add_command(label = "Manual", command = self.showHelp)
@@ -303,7 +313,12 @@ class Countersteer:
         self.statusLabel.config(text = message)
 
     def refresh(self):
-        self.budgetLabel.config(text = f"€{self.team.getBudget():,}")
+        budget = self.team.getBudget() # v0.19 
+        if self.shownBudget is None:
+            self.budgetLabel.config(text = f"€{budget:,}")
+        else:
+            animate.countTo(self.budgetLabel, self.shownBudget, budget, "€{:,}")
+        self.shownBudget = budget
         self.refreshGarage()
         self.refreshShop()
         self.refreshLeaderboard()
@@ -513,6 +528,8 @@ class Countersteer:
             message += f" {spins} spin(s). Poor performance."
         self.setStatus(message)
         self.refresh()
+        if score >= 90: sound.playSfx("perfect") # v0.19
+        animate.countTo(self.driverFields["Last run"], 0, score, "{}") # v0.19 
 
     def buyTyres(self):
         driver = self.currentDriver()
@@ -679,11 +696,11 @@ class SignDriverDialog(tk.Toplevel):
             self.grab_release()
             self.destroy()
 
-icon_sizes = (16, 32, 48, 256) # v0.18 
+icon_sizes = (16, 32, 48, 256) # v0.18
 window_width = 960 # v0.17
 window_height = 680 # v0.17
 
-def centreWindow(root): # v0.19
+def centreWindow(root): # v0.18
     x = (root.winfo_screenwidth() - window_width) // 2
     y = (root.winfo_screenheight() - window_height) // 2
     root.geometry(f"{window_width}x{window_height}+{max(x, 0)}+{max(y, 0)}")
@@ -707,13 +724,20 @@ def setWindowIcon(root): # v0.18
             except tk.TclError:
                 pass
     if images:
-        root.iconphoto(True, *images) 
+        root.iconphoto(True, *images)
 
 def quitGame(root): # v0.16
+    animate.stopAll() # v0.19
+    sound.closeAll()  # v0.19
     clearWindow(root)
     carcard.clearFrames()   
     gc.collect()            
     root.destroy()
+
+def muteKey(event): # v0.19 M toggle sound
+    if isinstance(event.widget, tk.Entry):
+        return
+    sound.toggleMute()
 
 def clearWindow(root): # v0.12
     root.config(menu = "")
@@ -722,43 +746,61 @@ def clearWindow(root): # v0.12
 
 
 def showMainMenu(root): # v0.12
-    clearWindow(root)
-    MainMenu(root, onStart = lambda: showTeamSelect(root),  # v0.13 START -> team select
-             onExit = lambda: quitGame(root)).pack(fill = "both", expand = True) # v0.16
+    def build(): # v0.19 fade out fade in
+        clearWindow(root)
+        MainMenu(root, onStart = lambda: showTeamSelect(root),  # v0.13 START -> team select
+                 onExit = lambda: quitGame(root)).pack(fill = "both", expand = True) # v0.16
+        sound.playMusic("menu") # v0.19
+    animate.transition(root, build) # v0.19
     
 def showTeamSelect(root):  # v0.13
-    clearWindow(root)
-    TeamSelectScreen(root, createStartingTeam(), draft_budget,
-                     onPreset = lambda team: startGame(root, team),
-                     onCreate = lambda: showDraft(root),
-                     onBack = lambda: showMainMenu(root)).pack(fill = "both", expand = True)
+    def build(): # v0.19
+        clearWindow(root)
+        TeamSelectScreen(root, createStartingTeam(), draft_budget,
+                         onPreset = lambda team: startGame(root, team),
+                         onCreate = lambda: showDraft(root),
+                         onBack = lambda: showMainMenu(root)).pack(fill = "both", expand = True)
+        sound.playMusic("menu") # v0.19
+    animate.transition(root, build) # v0.19
 
 def showDraft(root):  # v0.13
-    clearWindow(root)
-    DraftScreen(root, Draft(createDraftPool(), draft_budget),
-                onDone = lambda team: startGame(root, team),
-                onBack = lambda: showTeamSelect(root)).pack(fill = "both", expand = True)
+    def build(): # v0.19
+        clearWindow(root)
+        DraftScreen(root, Draft(createDraftPool(), draft_budget),
+                    onDone = lambda team: startGame(root, team),
+                    onBack = lambda: showTeamSelect(root)).pack(fill = "both", expand = True)
+        sound.playMusic("menu") # v0.19
+    animate.transition(root, build) # v0.19
 
 def startGame(root, team): # v0.12 # v0.13 team passed in arg
-    clearWindow(root)
-    Countersteer(root, team, onMainMenu = lambda: showMainMenu(root), # v0.13 team passed in arg
-                 onSeasonEnd = lambda season, bankrupt: showSeasonEnd(root, season, bankrupt)) # v0.15
+    def build(): # v0.19
+        clearWindow(root)
+        Countersteer(root, team, onMainMenu = lambda: showMainMenu(root), # v0.13 team passed in arg
+                     onSeasonEnd = lambda season, bankrupt: showSeasonEnd(root, season, bankrupt)) # v0.15
+        sound.playMusic("game") # v0.19
+    animate.transition(root, build) # v0.19
 
 def showSeasonEnd(root, season, bankrupt): # v0.15
-    clearWindow(root)
-    SeasonEndScreen(root, season, bankrupt,
-                    onMainMenu = lambda: showMainMenu(root),
-                    onNewSeason = lambda: showTeamSelect(root)).pack(fill = "both", expand = True)
+    def build(): # v0.19
+        clearWindow(root)
+        SeasonEndScreen(root, season, bankrupt,
+                        onMainMenu = lambda: showMainMenu(root),
+                        onNewSeason = lambda: showTeamSelect(root)).pack(fill = "both", expand = True)
+        sound.playMusic("menu") # v0.19
+    animate.transition(root, build) # v0.19
 
 if __name__ == "__main__": 
-    setAppId() # v0.19
+    setAppId() # v0.18
     window = tk.Tk()
-    setWindowIcon(window) # v0.19
+    setWindowIcon(window) # v0.18
     window.title("Countersteer") # v0.12
-    centreWindow(window) # v0.19
+    centreWindow(window) # v0.18 was window.geometry("960x680")
     window.configure(bg = theme.bg) # v0.12
     window.resizable(False, False) # v0.12
     theme.setupFonts(window)
     window.protocol("WM_DELETE_WINDOW", lambda: quitGame(window)) # v0.16  X button
+    window.bind_all("<KeyPress-m>", muteKey) # v0.19
+    window.bind_all("<KeyPress-M>", muteKey) # v0.19
+    sound.start(window) # v0.19
     showMainMenu(window)
     window.mainloop()

@@ -3,6 +3,7 @@ from tkinter import messagebox
 
 import theme
 import carcard
+import animate # v0.19
 from models import Draft
 from exceptions import (
     DuplicateDriver,
@@ -18,10 +19,10 @@ card_height = 300
 
 
 def button(parent, text, command, colour = theme.panel_light, fg = "white"):
-    return tk.Button(parent, text = text, command = command, font = theme.fonts["bodyBold"],
+    return animate.styleButton(tk.Button(parent, text = text, command = command, font = theme.fonts["bodyBold"],
                      bg = colour, fg = fg, activebackground = theme.cyan,
                      activeforeground = theme.bg, relief = "flat", bd = 0,
-                     padx = 16, pady = 8, cursor = "hand2")
+                     padx = 16, pady = 8, cursor = "hand2"), colour) # v0.19 hover glow + click pulse
 
 
 def heading(parent, text, size = 26, colour = theme.pink, bg = theme.bg):
@@ -74,7 +75,7 @@ class TeamSelectScreen(tk.Frame):
                      "Remaining cash becomes season budget"]:
             tk.Label(create, text = f"▸  {line}", font = theme.fonts["body"], fg = theme.text,
                      bg = theme.panel).pack(anchor = "w", pady = 3)
-        tk.Label(create, text = "Pick your poison.", font = theme.fonts["small"],
+        tk.Label(create, text = "One star, or three solid drivers?", font = theme.fonts["small"],
                  fg = theme.muted, bg = theme.panel).pack(anchor = "w", pady = (14, 0))
         button(create, "BUILD NEW TEAM", onCreate, colour = theme.cyan,
                fg = theme.bg).pack(side = "bottom", fill = "x")
@@ -101,7 +102,6 @@ class DraftScreen(tk.Frame):
         self.__onDone = onDone
         self.__selected = 0
         self.__rows = []           
-        self.__images = {}          # car picture cache
 
         # top bar
         top = tk.Frame(self, bg = theme.bg)
@@ -134,8 +134,9 @@ class DraftScreen(tk.Frame):
         right = tk.Frame(middle, bg = theme.bg)
         right.pack(side = "right", fill = "y", padx = (14, 0))
         self.__card = tk.Canvas(right, width = card_width, height = card_height, bg = theme.panel,
-                                highlightthickness = 0)
+                                highlightthickness = 0, cursor = "hand2")
         self.__card.pack()
+        self.__turntable = carcard.Turntable(self.__card, "draft")  # v0.15
         buttons = tk.Frame(right, bg = theme.bg)
         buttons.pack(fill = "x", pady = 8)
         button(buttons, "DRAFT DRIVER", self.__draftSelected,
@@ -239,17 +240,17 @@ class DraftScreen(tk.Frame):
             c.create_text(card_width - 16, 22, text = "DRAFTED", anchor = "e",
                           font = theme.fonts["bodyBold"], fill = theme.cyan)
 
-        # v0.14
+        # v0.15 spinning car
         if not self.__turntable.show(car.getImagePath(), card_width // 2, 130):
             carcard.drawSilhouette(c, (card_width - 306) // 2, 80)
 
-        c.create_text(card_width // 2, 186, text = car.getModel().upper(), font = theme.fonts["heading"],
+        c.create_text(card_width // 2, 214, text = car.getModel().upper(), font = theme.fonts["heading"],
                       fill = theme.cyan)
-        carcard.drawStatBar(c, 18, 218, "SKILL", driver.getSkill(), 100,
+        carcard.drawStatBar(c, 18, 240, "SKILL", driver.getSkill(), 100,
                             str(driver.getSkill()), theme.pink, barWidth = 190)
-        carcard.drawStatBar(c, 18, 244, "POWER", car.getHorsepower(), 400,
+        carcard.drawStatBar(c, 18, 262, "POWER", car.getHorsepower(), 400,
                             f"{car.getHorsepower()} hp", theme.cyan, barWidth = 190)
-        carcard.drawStatBar(c, 18, 270, "ANGLE", car.getSteeringAngle(), 70,
+        carcard.drawStatBar(c, 18, 284, "ANGLE", car.getSteeringAngle(), 70,
                             f"{car.getSteeringAngle()}°", theme.cyan, barWidth = 190)
 
     def __select(self, index):

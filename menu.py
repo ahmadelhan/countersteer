@@ -4,6 +4,8 @@ import tkinter as tk
 import tkinter.font as guiFont
 
 import theme
+import animate # v0.19
+import sound # v0.19
 
 width = 960
 height = 680
@@ -38,6 +40,7 @@ class MainMenu(tk.Frame):
         self.__options = [("START", self.__start), ("GUIDE", self.__openGuide),
                           ("EXIT", self.__exit)]
         self.__selected = 0
+        self.__shownSelected = None # v0.19 the option currently drawn big
         self.__phase = 0.0          
         self.__frame = 0
         self.__afterId = None
@@ -60,14 +63,14 @@ class MainMenu(tk.Frame):
         self.__drawTitle()
         self.__drawOptions()
 
-        # v0.16 __unbindKeys
+        # v0.15
         self.__bindings = [
             ("<Up>", master.bind("<Up>", lambda e: self.__moveSelection(-1))),
             ("<Down>", master.bind("<Down>", lambda e: self.__moveSelection(1))),
             ("<Return>", master.bind("<Return>", lambda e: self.__activate())),
             ("<Escape>", master.bind("<Escape>", lambda e: self.__closeGuide())),
         ]
-        self.bind("<Destroy>", lambda e: (self.__stop(), self.__unbindKeys())) # v0.16 release  keys
+        self.bind("<Destroy>", lambda e: (self.__stop(), self.__unbindKeys())) # v0.15 also release the keys
 
         self.__animate()
 
@@ -159,9 +162,9 @@ class MainMenu(tk.Frame):
             c.create_text(width // 2, y, text = label, font = self.__optionFont,
                           fill = theme.muted, tags = (tag, "option"))
             c.tag_bind(tag, "<Enter>", lambda e, i=index: self.__select(i))
-            c.tag_bind(tag, "<Button-1>", lambda e, i=index: self.__options[i][1]())
+            c.tag_bind(tag, "<Button-1>", lambda e, i=index: self.__choose(i)) # v0.19 click sound
         c.create_text(width // 2, height - 18,
-                      text = "↑ ↓  select     ENTER  confirm", font = self.__smallFont,
+                      text = "↑ ↓  select     ENTER  confirm     M  mute", font = self.__smallFont,  # v0.19
                       fill = theme.muted)
         self.__highlightSelected()
 
@@ -221,34 +224,57 @@ class MainMenu(tk.Frame):
             self.__afterId = None
             
     def __select(self, index):
-        if self.__guideOpen:
+        if self.__guideOpen or index == self.__selected:
             return
         self.__selected = index
+        sound.playSfx("hover") # v0.19
         self.__highlightSelected()
 
     def __moveSelection(self, step):
         if self.__guideOpen:
             return
         self.__selected = (self.__selected + step) % len(self.__options)
+        sound.playSfx("hover") # v0.19
         self.__highlightSelected()
 
-    def __highlightSelected(self):
+    def __choose(self, index): # v0.19
+        sound.playSfx("click")
+        self.__options[index][1]()
+
+    def __highlightSelected(self): # v0.19 
         c = self.__canvas
-        c.delete("chevron")
+        family, size, weight = self.__optionFont
         for index in range(len(self.__options)):
             colour = theme.cyan if index == self.__selected else theme.muted
             c.itemconfig(f"option{index}", fill = colour)
-        y = 440 + 25 + self.__selected * 55
-        c.create_text(width // 2 - 100, y, text = "▶", font = self.__optionFont,
-                      fill = theme.pink, tags = "chevron")
-        c.create_text(width // 2 + 100, y, text = "◀", font = self.__optionFont,
-                      fill = theme.pink, tags = "chevron")
+        targetY = 440 + 25 + self.__selected * 55
+        if not c.find_withtag("chevron"):          
+            c.create_text(width // 2 - 100, targetY, text = "▶", font = self.__optionFont,
+                          fill = theme.pink, tags = ("chevron", "chevronLeft"))
+            c.create_text(width // 2 + 100, targetY, text = "◀", font = self.__optionFont,
+                          fill = theme.pink, tags = ("chevron", "chevronRight"))
+            c.itemconfig(f"option{self.__selected}", font = (family, size + 3, weight))
+            self.__shownSelected = self.__selected
+            return
+        startY = c.coords("chevronLeft")[1]
+        old, new = self.__shownSelected, self.__selected
+        self.__shownSelected = new
+
+        def step(t):
+            y = startY + (targetY - startY) * t
+            c.coords("chevronLeft", width // 2 - 100, y)
+            c.coords("chevronRight", width // 2 + 100, y)
+            c.itemconfig(f"option{new}", font = (family, round(size + 3 * t), weight))
+            if old is not None and old != new:
+                c.itemconfig(f"option{old}", font = (family, round(size + 3 * (1 - t)), weight))
+
+        animate.animate(c, "chevron", 130, step)
 
     def __activate(self):
         if self.__guideOpen:
             self.__closeGuide()
             return
-        self.__options[self.__selected][1]()
+        self.__choose(self.__selected) # v0.19 click sound
 
     def __start(self):
         self.__stop()
@@ -279,7 +305,8 @@ class MainMenu(tk.Frame):
             self.__canvas.delete("guide")
             self.__guideOpen = False
 
-    def __unbindKeys(self): # v0.16
+    def __unbindKeys(self): # v0.15
+
         try:
             root = self.winfo_toplevel()
             for key, bindingId in self.__bindings:
