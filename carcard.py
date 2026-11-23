@@ -17,8 +17,10 @@ drag_step = 12
 resume_ms = 1500        
 _frameCache = {}    
 
-# v0.14
+def clearFrames(): # v0.16
+    _frameCache.clear()
 
+# v0.14
 def loadFrames(folder, size):
     key = (folder, size, car_style)
     if key in _frameCache:

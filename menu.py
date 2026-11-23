@@ -60,11 +60,14 @@ class MainMenu(tk.Frame):
         self.__drawTitle()
         self.__drawOptions()
 
-        master.bind("<Up>", lambda e: self.__moveSelection(-1))
-        master.bind("<Down>", lambda e: self.__moveSelection(1))
-        master.bind("<Return>", lambda e: self.__activate())
-        master.bind("<Escape>", lambda e: self.__closeGuide())
-        self.bind("<Destroy>", lambda e: self.__stop())
+        # v0.16 __unbindKeys
+        self.__bindings = [
+            ("<Up>", master.bind("<Up>", lambda e: self.__moveSelection(-1))),
+            ("<Down>", master.bind("<Down>", lambda e: self.__moveSelection(1))),
+            ("<Return>", master.bind("<Return>", lambda e: self.__activate())),
+            ("<Escape>", master.bind("<Escape>", lambda e: self.__closeGuide())),
+        ]
+        self.bind("<Destroy>", lambda e: (self.__stop(), self.__unbindKeys())) # v0.16 release  keys
 
         self.__animate()
 
@@ -276,7 +279,11 @@ class MainMenu(tk.Frame):
             self.__canvas.delete("guide")
             self.__guideOpen = False
 
-    def __unbindKeys(self):
-        root = self.winfo_toplevel()
-        for key in ("<Up>", "<Down>", "<Return>", "<Escape>"):
-            root.unbind(key)
+    def __unbindKeys(self): # v0.16
+        try:
+            root = self.winfo_toplevel()
+            for key, bindingId in self.__bindings:
+                root.unbind(key, bindingId)
+        except tk.TclError:     # window gone
+            pass
+        self.__bindings = []
