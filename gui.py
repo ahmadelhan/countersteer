@@ -128,8 +128,19 @@ class Countersteer:
     def buildHeader(self):
         header = tk.Frame(self.root, bg = theme.bg)
         header.pack(fill = "x", padx = 14, pady = (10, 8))
-        tk.Label(header, text="Countersteer", font = theme.fonts["title"],
-                 fg = theme.pink, bg = theme.bg).pack(side = "left")
+        # v0.17 banner logo
+        self.bannerImage = None
+        bannerPath = os.path.join(BASE_DIR, "images", "banner_header.png")
+        if os.path.exists(bannerPath):
+            try:
+                self.bannerImage = tk.PhotoImage(file = bannerPath)
+            except tk.TclError:
+                self.bannerImage = None
+        if self.bannerImage is not None:
+            tk.Label(header, image = self.bannerImage, bg = theme.bg).pack(side = "left")
+        else:
+            tk.Label(header, text="Countersteer", font = theme.fonts["title"],
+                     fg = theme.pink, bg = theme.bg).pack(side = "left")
         right = tk.Frame(header, bg = theme.bg)
         right.pack(side ="right")
         tk.Label(right, text=self.team.getName().upper(), font = theme.fonts["small"],
