@@ -5,6 +5,7 @@ from data import createRivals  # v0.15
 import random  # v0.15
 from models import Car, Driver, Team, Draft # v0.13
 from models import Battle, Round, Season  # v0.15
+from models import Strategy  # v0.20
 from minigame import scoreSection
 from exceptions import (
     NoTyresLeft,
@@ -384,6 +385,55 @@ class TestScoringAndOrders(unittest.TestCase):
         self.assertTrue(current.isTeamBattle(Battle("Final", a, b)))
         self.assertFalse(current.isTeamBattle(Battle("Final", a, createRivals()[0])))
 # v0.15
+
+
+
+# v0.20 strategy
+class TestStrategy(unittest.TestCase):
+
+    def test_unknown_line_raises_value_error(self):
+        with self.assertRaises(ValueError):
+            Strategy("Flat out")
+
+    def test_lines_change_the_target(self):
+        self.assertGreater(Strategy("Safe").applyWidth(30), Strategy("Balanced").applyWidth(30))
+        self.assertLess(Strategy("Aggressive").applyWidth(30), Strategy("Balanced").applyWidth(30))
+        self.assertGreater(Strategy("Balanced", freshTyres = True).applyWidth(30), 30)
+
+    def test_aggressive_scores_more_and_hurts_more(self):
+        aggressive = Strategy("Aggressive")
+        self.assertGreater(aggressive.finalScore(70, 70), 70)
+        self.assertGreater(aggressive.getSpinDamage(Driver.spin_damage), Driver.spin_damage)
+
+    def test_fresh_tyres_need_two_sets(self):
+        driver = newDriver()
+        car = driver.getCar()
+        for _ in range(Car.starting_tyres - 1):
+            car.useTyres()
+        with self.assertRaises(NoTyresLeft):
+            driver.completeRun(80, 0, Strategy("Balanced", freshTyres = True))
+        self.assertEqual(driver.getRunsCompleted(), 0)      # nothing recorded
+
+    def test_fresh_tyres_use_two_sets(self):
+        driver = newDriver()
+        driver.completeRun(80, 0, Strategy("Balanced", freshTyres = True))
+        self.assertEqual(driver.getCar().getTyresets(), Car.starting_tyres - 2)
+
+    def test_pressure_works_or_backfires(self):
+        pressure = Strategy("Balanced", pressure = True)
+        good, bad = Strategy.pressure_timing, Strategy.pressure_timing - 1
+        self.assertEqual(pressure.getRivalLoss(good), Strategy.pressure_rival_loss)
+        self.assertEqual(pressure.getRivalLoss(bad), 0)
+        self.assertEqual(pressure.finalScore(70, bad), 70 - Strategy.pressure_own_loss)
+
+    def test_pressure_lowers_rival_score(self):
+        a, b = newDriver("A"), newDriver("B")
+        battle = Battle("Final", a, b)
+        battle.record(b, 5)
+        self.assertEqual(battle.applyPressure(b, 8), 0)
+        battle.record(a, 1)
+        self.assertIs(battle.decide(), a)
+# v0.20
 
 
 if __name__ == "__main__":

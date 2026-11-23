@@ -25,6 +25,9 @@ guide_text = (
     "Press SPACE when the pink marker is inside the cyan zone. There are three "
     "sections: entry, angle and exit. Miss badly, or don't press, and you spin, "
     "which damages the car.\n\n"
+    "STRATEGY\n" # v0.20
+    "Before every run pick a line (Safe, Balanced or Aggressive) and used or fresh "
+    "tyres. In battles you can also pressure the lead car.\n\n"
     "SHOP\n"
     "Buy tyres, repair damage and upgrade tune. Better tune and skill make the "
     "cyan zone wider.\n\n"

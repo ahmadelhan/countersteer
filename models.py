@@ -169,10 +169,17 @@ class Driver:
             raise ValueError("Can't score more than 100 or less than 0.")
         self.__runScores.append(score)
         
-    def completeRun(self, score, spins):
+    def completeRun(self, score, spins, strategy = None): # v0.20 strategy
+        tyres = 1
+        spinDamage = Driver.spin_damage
+        if strategy is not None:                # v0.20
+            strategy.checkTyres(self.__car)
+            tyres = strategy.getTyreSets()
+            spinDamage = strategy.getSpinDamage(spinDamage)
         self.recordRun(score)
-        self.__car.useTyres()
-        self.__car.damage(Driver.wear_per_run + spins * Driver.spin_damage)
+        for _ in range(tyres):
+            self.__car.useTyres()
+        self.__car.damage(Driver.wear_per_run + spins * spinDamage)
         
     def getRating(self):  # v0.15
         car = self.__car
@@ -412,6 +419,85 @@ class Draft:
 # v0.13
 
 
+# v0.20 strategy
+class Strategy:
+    lines = {   # target width, marker speed, bonus, spin damage
+        "Safe":       {"width": 1.3,  "speed": 0.9,  "bonus": -2, "spin": 0.6},
+        "Balanced":   {"width": 1.0,  "speed": 1.0,  "bonus": 0,  "spin": 1.0},
+        "Aggressive": {"width": 0.75, "speed": 1.2,  "bonus": 5,  "spin": 1.5},
+    }
+    line_order = ["Safe", "Balanced", "Aggressive"]
+    fresh_tyre_width = 1.2      # easier skillcheck
+    fresh_tyre_sets = 2         # for two tyresets
+    pressure_timing = 85        # timing needed for pressure 
+    pressure_rival_loss = 6     # rival loses
+    pressure_own_loss = 8       # player loses 
+    min_halfwidth = 6
+
+    def __init__(self, line = "Balanced", freshTyres = False, pressure = False):
+        if line not in Strategy.lines:
+            raise ValueError(f"'{line}' isn't a racing line...")
+        self.__line = line
+        self.__freshTyres = freshTyres
+        self.__pressure = pressure
+
+# getters
+    def getLine(self):
+        return self.__line
+
+    def hasFreshTyres(self):
+        return self.__freshTyres
+
+    def hasPressure(self):
+        return self.__pressure
+# getters
+
+    def getTyreSets(self):
+        return Strategy.fresh_tyre_sets if self.__freshTyres else 1
+
+    def checkTyres(self, car):
+        needed = self.getTyreSets()
+        if car.getTyresets() < needed:
+            raise NoTyresLeft(
+                f"Fresh tyres use {needed} sets but the {car.getModel()} only has "
+                f"{car.getTyresets()}.\nBuy tyres in the Shop or run on used tyres."
+            )
+
+    def applyWidth(self, halfwidth):
+        width = halfwidth * Strategy.lines[self.__line]["width"]
+        if self.__freshTyres:
+            width *= Strategy.fresh_tyre_width
+        return max(Strategy.min_halfwidth, round(width))
+
+    def getSpeedFactor(self):
+        return Strategy.lines[self.__line]["speed"]
+
+    def getBonus(self):
+        return Strategy.lines[self.__line]["bonus"]
+
+    def getSpinDamage(self, baseDamage):
+        return round(baseDamage * Strategy.lines[self.__line]["spin"])
+
+    def pressureWorked(self, timing):
+        return self.__pressure and timing >= Strategy.pressure_timing
+
+    def finalScore(self, score, timing):
+        score += self.getBonus()
+        if self.__pressure and not self.pressureWorked(timing):
+            score -= Strategy.pressure_own_loss
+        return max(0, min(100, score))
+
+    def getRivalLoss(self, timing):
+        return Strategy.pressure_rival_loss if self.pressureWorked(timing) else 0
+
+    def describe(self):
+        parts = [self.__line, "fresh tyres" if self.__freshTyres else "used tyres"]
+        if self.__pressure:
+            parts.append("pressure on")
+        return ", ".join(parts)
+# v0.20
+
+
 # v0.15 game layer
 class Battle:
     def __init__(self, stage, higherSeed, lowerSeed):
@@ -463,6 +549,13 @@ class Battle:
         self.__winner = driver
         driver.addBattleWin()
         return driver
+
+    def applyPressure(self, driver, points):  # v0.20 strategy
+        score = self.__scores.get(driver)
+        if score is None:
+            return None
+        self.__scores[driver] = max(0, score - points)
+        return self.__scores[driver]
 
     def isTeamOrder(self):  # v0.15
         return self.__winner is not None and len(self.__scores) == 0

@@ -3,7 +3,9 @@ from tkinter import ttk, messagebox
 
 import theme
 from models import Season, Round
+from models import Strategy # v0.20
 from minigame import DriftRunWindow
+from strategy import StrategyDialog # v0.20
 import animate # v0.19
 import sound # v0.19
 from exceptions import NoTyresLeft, CarDamaged, Bankrupt
@@ -276,21 +278,24 @@ class EventTab(tk.Frame):
             self.__addLog(f"{driver.getName()} did not start.")
             self.__afterQualifyingRun()
             return
-        DriftRunWindow(self.__app.root, driver,
-                       lambda score, spins: self.__qualifyingDone(driver, score, spins))
+        StrategyDialog(self.__app.root, driver, lambda strategy: DriftRunWindow( # v0.20 strategy first
+            self.__app.root, driver,
+            lambda score, spins: self.__qualifyingDone(driver, strategy, score, spins),
+            strategy = strategy, title = "Qualifying run"))
 
-    def __qualifyingDone(self, driver, timing, spins):
+    def __qualifyingDone(self, driver, strategy, timing, spins): # v0.20 strategy
         current = self.__season().getCurrentRound()
-        score = driver.blendScore(timing)  # v0.15 timing + driver rating
+        score = strategy.finalScore(driver.blendScore(timing), timing)  # v0.15 timing + driver rating # v0.20 + strategy
         try:
-            driver.completeRun(score, spins)
+            driver.completeRun(score, spins, strategy) # v0.20 strategy
         except (ValueError, NoTyresLeft) as error:
             messagebox.showerror("Run not counted", str(error))
             return
         current.recordQualifying(driver, score)
         if score >= 90: sound.playSfx("perfect") # v0.19
         self.__addLog(f"{driver.getName()} qualifies with {score} (your timing {timing}, "
-                      f"rating {driver.getRating()})." + (f" {spins} spin(s)." if spins else ""))
+                      f"rating {driver.getRating()}, {strategy.getLine().lower()})." # v0.20 line
+                      + (f" {spins} spin(s)." if spins else ""))
         self.__afterQualifyingRun()
 
     def __afterQualifyingRun(self):
@@ -309,17 +314,36 @@ class EventTab(tk.Frame):
             battle.forfeit(driver)
             self.__afterBattleRun(battle)
             return
-        DriftRunWindow(self.__app.root, driver,
-                       lambda score, spins: self.__battleRunDone(battle, driver, score, spins))
+        rival = [d for d in battle.getDrivers() if d is not driver][0] # v0.20
+        StrategyDialog(self.__app.root, driver,
+                       lambda strategy: self.__startBattleRun(battle, driver, rival, strategy),
+                       rival = rival)
 
-    def __battleRunDone(self, battle, driver, timing, spins):
-        score = driver.blendScore(timing)  # v0.15 timing + driver rating
+    def __startBattleRun(self, battle, driver, rival, strategy): # v0.20
+        current = self.__season().getCurrentRound()
+        rivalScore = current.simulateRun(rival)
+        battle.record(rival, rivalScore)
+        DriftRunWindow(self.__app.root, driver,
+                       lambda score, spins: self.__battleRunDone(battle, driver, rival, strategy,
+                                                                 score, spins),
+                       strategy = strategy, rival = rival, rivalScore = rivalScore,
+                       title = battle.getStage())
+
+    def __battleRunDone(self, battle, driver, rival, strategy, timing, spins): # v0.20 rival, strategy
+        score = strategy.finalScore(driver.blendScore(timing), timing)  # v0.15 timing + driver rating # v0.20 + strategy
         try:
-            driver.completeRun(score, spins)
+            driver.completeRun(score, spins, strategy) # v0.20 strategy
         except (ValueError, NoTyresLeft) as error:
             messagebox.showerror("Run not counted", str(error))
             return
         battle.record(driver, score)
+        loss = strategy.getRivalLoss(timing) # v0.20 pressure
+        if loss:
+            battle.applyPressure(rival, loss)
+            self.__addLog(f"Pressure worked: {rival.getName()} cracked and lost {loss} points.")
+        elif strategy.hasPressure():
+            self.__addLog(f"Pressure backfired: {driver.getName()} lost "
+                          f"{Strategy.pressure_own_loss} points.")
         if score >= 90: sound.playSfx("perfect") # v0.19
         self.__afterBattleRun(battle)
 
