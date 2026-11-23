@@ -1,7 +1,10 @@
 import unittest
 
 from data import createStartingTeam, makeCar, createDraftPool, draft_budget  # v0.13
+from data import createRivals  # v0.15
+import random  # v0.15
 from models import Car, Driver, Team, Draft # v0.13
+from models import Battle, Round, Season  # v0.15
 from minigame import scoreSection
 from exceptions import (
     NoTyresLeft,
@@ -14,6 +17,7 @@ from exceptions import (
     MaxTune,
     DraftIncomplete,    # v0.13
     InvalidTeamName, # v0.13
+    Bankrupt,        # v0.15
 )
 
 
@@ -218,6 +222,126 @@ class TestDraft(unittest.TestCase):
         self.assertEqual(team.getSize(), 3)
         self.assertEqual(team.getBudget(), self.draft.getBudgetLeft())
 # v0.13
+
+# v0.15
+def playRound(season, teamScore):
+    season.startRound()
+    current = season.getCurrentRound()
+    for driver in current.getQualifyingQueue():
+        current.recordQualifying(driver, teamScore)
+    current.finishQualifying()
+    battle = current.getNextBattle()
+    while battle is not None:
+        for driver in current.needsTeamRun(battle):
+            battle.record(driver, teamScore)
+        current.completeBattle(battle)
+        battle = current.getNextBattle()
+    return season.finishRound()
+
+
+class TestBattle(unittest.TestCase):
+
+    def test_higher_score_wins(self):
+        a, b = newDriver("A"), newDriver("B")
+        battle = Battle("Final", a, b)
+        battle.record(a, 70)
+        battle.record(b, 80)
+        self.assertIs(battle.decide(), b)
+        self.assertIs(battle.getLoser(), a)
+        self.assertEqual(b.getBattleWins(), 1)
+
+    def test_tie_goes_to_higher_seed(self):
+        a, b = newDriver("A"), newDriver("B")
+        battle = Battle("Final", a, b)
+        battle.record(a, 75)
+        battle.record(b, 75)
+        self.assertIs(battle.decide(), a)
+
+    def test_forfeit_loses(self):
+        a, b = newDriver("A"), newDriver("B")
+        battle = Battle("Final", a, b)
+        battle.forfeit(a)
+        battle.record(b, 10)
+        self.assertIs(battle.decide(), b)
+
+    def test_decide_before_both_run_raises_error(self):
+        a, b = newDriver("A"), newDriver("B")
+        battle = Battle("Final", a, b)
+        battle.record(a, 50)
+        with self.assertRaises(ValueError):
+            battle.decide()
+
+
+class TestSeason(unittest.TestCase):
+
+    def setUp(self):
+        self.team = createStartingTeam()
+        self.season = Season(self.team, createRivals(), random.Random(1))
+
+    def test_start_round_pays_wages(self):
+        wages = self.season.startRound()
+        self.assertEqual(wages, self.season.getWageBill())
+        self.assertEqual(self.team.getBudget(), 20000 - wages)
+
+    def test_bankrupt_when_wages_unaffordable(self):
+        self.team.spend(self.team.getBudget() - 100)     # leave €100
+        with self.assertRaises(Bankrupt):
+            self.season.startRound()
+
+    def test_bracket_is_top_8_seeded(self):
+        self.season.startRound()
+        current = self.season.getCurrentRound()
+        for driver in current.getQualifyingQueue():
+            current.recordQualifying(driver, 99)
+        current.finishQualifying()
+        ranking = current.getRanking()
+        battles = current.getBattles()
+        self.assertEqual(len(battles), 4)
+        self.assertEqual(battles[0].getDrivers(), [ranking[0], ranking[7]])     # 1 v 8
+
+    def test_must_qualify_team_first(self):
+        self.season.startRound()
+        with self.assertRaises(ValueError):
+            self.season.getCurrentRound().finishQualifying()
+
+    def test_did_not_start_misses_bracket(self):
+        self.season.startRound()
+        current = self.season.getCurrentRound()
+        for driver in current.getQualifyingQueue():
+            current.recordQualifying(driver, None)
+        current.finishQualifying()
+        for battle in current.getBattles():
+            for driver in battle.getDrivers():
+                self.assertFalse(current.isTeamDriver(driver))
+
+    def test_round_gives_points_and_prize(self):
+        before = self.team.getBudget()
+        results, earnings = playRound(self.season, 100)
+        positions = [position for _, position, _, _ in results]
+        self.assertEqual(positions.count(1), 1)
+        self.assertEqual(positions.count(2), 1)
+        self.assertEqual(sum(d.getPoints() for d in self.season.getStandings()), 25 + 18 + 12 * 2 + 6 * 4)
+        self.assertEqual(self.team.getBudget(), before - self.season.getWageBill() + earnings)
+
+    def test_full_season_has_champion(self):
+        with self.assertRaises(ValueError):
+            self.season.getChampion()
+        for _ in range(Season.total_rounds):
+            playRound(self.season, 90)
+        self.assertTrue(self.season.isOver())
+        champion = self.season.getChampion()
+        self.assertEqual(champion, self.season.getStandings()[0])
+        with self.assertRaises(ValueError):
+            self.season.startRound()
+
+    def test_reset_season(self):
+        playRound(self.season, 90)
+        self.season.resetAll()
+        self.assertEqual(self.season.getRoundsDone(), 0)
+        self.assertTrue(all(d.getPoints() == 0 for d in self.season.getStandings()))
+        self.assertEqual(self.team.getBudget(), 20000)
+# v0.15
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

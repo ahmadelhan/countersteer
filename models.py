@@ -8,8 +8,10 @@ from exceptions import (
     NoRunsRecorded,
     MaxTune,
     DraftIncomplete,    # v0.14
-    InvalidTeamName     # v0.14
+    InvalidTeamName,    # v0.14
+    Bankrupt            # v0.15
 )
+import random  # v0.15 rival scores
 
 class Car:
     min_run_condition = 30
@@ -397,3 +399,283 @@ class Draft:
             team.addDriver(driver)
         return team
 # v0.13
+
+
+# v0.15 game layer
+class Battle:
+    def __init__(self, stage, higherSeed, lowerSeed):
+        self.__stage = stage
+        self.__drivers = [higherSeed, lowerSeed]
+        self.__scores = {}          # driver -> score, None = forfeited
+        self.__winner = None
+
+# getters
+    def getStage(self):
+        return self.__stage
+
+    def getDrivers(self):
+        return list(self.__drivers)
+
+    def getScore(self, driver):
+        return self.__scores.get(driver)
+
+    def hasRun(self, driver):
+        return driver in self.__scores
+
+    def getWinner(self):
+        return self.__winner
+
+    def getLoser(self):
+        if self.__winner is None:
+            return None
+        return self.__drivers[1] if self.__winner is self.__drivers[0] else self.__drivers[0]
+
+    def isDone(self):
+        return self.__winner is not None
+# getters
+
+    def record(self, driver, score):
+        if driver not in self.__drivers:
+            raise ValueError(f"{driver.getName()} isn't in this battle.")
+        if score is not None and (score < 0 or score > 100):
+            raise ValueError("Can't score more than 100 or less than 0.")
+        self.__scores[driver] = score
+
+    def forfeit(self, driver):
+        self.record(driver, None)
+
+    def decide(self):
+        higher, lower = self.__drivers
+        if higher not in self.__scores or lower not in self.__scores:
+            raise ValueError("Both drivers must run before the battle is decided.")
+        higherScore = self.__scores[higher]
+        lowerScore = self.__scores[lower]
+        if lowerScore is not None and (higherScore is None or lowerScore > higherScore):
+            self.__winner = lower
+        else:
+            self.__winner = higher         
+        self.__winner.addBattleWin()
+        return self.__winner
+
+
+class Round:
+    bracket_size = 8
+    stages = ["Quarter-final", "Semi-final", "Final"]
+    seed_pairs = [(0, 7), (3, 4), (1, 6), (2, 5)]       # 1v8, 4v5, 2v7, 3v6
+    points_table = {1: 25, 2: 18, 3: 12, 5: 6}      
+    prize_table = {1: 10000, 2: 6000, 3: 4000, 5: 2500}
+    appearance_fee = 750                                # for drivers who ran but missed top 8
+
+    def __init__(self, number, teamDrivers, rivals, rng):
+        self.__number = number
+        self.__teamDrivers = list(teamDrivers)
+        self.__rivals = list(rivals)
+        self.__rng = rng
+        self.__qualifying = {}          # driver -> score, None = did not start
+        self.__ranking = []            
+        self.__stageIndex = 0
+        self.__battles = []           
+
+# getters
+    def getNumber(self):
+        return self.__number
+
+    def getTeamDrivers(self):
+        return list(self.__teamDrivers)
+
+    def isTeamDriver(self, driver):
+        return driver in self.__teamDrivers
+
+    def getQualifyingQueue(self):
+        return [d for d in self.__teamDrivers if d not in self.__qualifying]
+
+    def isQualifyingDone(self):
+        return len(self.__ranking) > 0
+
+    def getQualifyingScore(self, driver):
+        return self.__qualifying.get(driver)
+
+    def getRanking(self):
+        return list(self.__ranking)
+
+    def getBattles(self):
+        return list(self.__battles)
+
+    def getStageName(self):
+        return Round.stages[min(self.__stageIndex, len(Round.stages) - 1)]
+# getters
+
+    def simulateRun(self, driver):
+        base = 32 + driver.getSkill() * 0.5 + driver.getCar().getHorsepower() / 40
+        score = self.__rng.gauss(base, 7)
+        if self.__rng.random() < 0.08:          # rivals spin sometimes too
+            score *= 0.5
+        return max(0, min(100, round(score)))
+
+    # qualifying 
+    def recordQualifying(self, driver, score):
+        """score is None if the driver couldn't start (no tyres / damaged)."""
+        if driver not in self.__teamDrivers:
+            raise ValueError(f"{driver.getName()} isn't on your team.")
+        self.__qualifying[driver] = score
+
+    def finishQualifying(self):
+        if len(self.getQualifyingQueue()) > 0:
+            raise ValueError("Every team driver must run (or be marked as not starting) first.")
+        for rival in self.__rivals:
+            self.__qualifying[rival] = self.simulateRun(rival)
+        everyone = self.__teamDrivers + self.__rivals
+        ranked = [d for d in everyone if self.__qualifying[d] is not None]
+        ranked.sort(key = lambda d: self.__qualifying[d], reverse = True)
+        didNotStart = [d for d in everyone if self.__qualifying[d] is None]
+        self.__ranking = ranked + didNotStart
+        top = self.__ranking[:Round.bracket_size]
+        for high, low in Round.seed_pairs:
+            self.__battles.append(Battle(Round.stages[0], top[high], top[low]))
+
+    # battles 
+    def __currentStageBattles(self):
+        stage = Round.stages[self.__stageIndex]
+        return [b for b in self.__battles if b.getStage() == stage]
+
+    def getNextBattle(self):
+
+        if not self.isQualifyingDone():
+            return None
+        for battle in self.__currentStageBattles():
+            if not battle.isDone():
+                return battle
+        if self.__stageIndex == len(Round.stages) - 1:
+            return None                         # final decided
+        winners = [b.getWinner() for b in self.__currentStageBattles()]
+        self.__stageIndex += 1
+        for i in range(0, len(winners), 2):
+            self.__battles.append(Battle(Round.stages[self.__stageIndex], winners[i], winners[i + 1]))
+        return self.getNextBattle()
+
+    def needsTeamRun(self, battle):
+        return [d for d in battle.getDrivers() if d in self.__teamDrivers and not battle.hasRun(d)]
+
+    def completeBattle(self, battle):
+        if len(self.needsTeamRun(battle)) > 0:
+            raise ValueError("Your driver has to run before he starts battling.")
+        for driver in battle.getDrivers():
+            if not battle.hasRun(driver):
+                battle.record(driver, self.simulateRun(driver))
+        return battle.decide()
+
+    def isFinished(self):
+        return self.isQualifyingDone() and self.getNextBattle() is None
+
+    # results 
+    def getResults(self):
+        if not self.isFinished():
+            raise ValueError("The round isn't finished yet.")
+        final = self.__battles[-1]
+        positions = {final.getWinner(): 1, final.getLoser(): 2}
+        for battle in self.__battles:
+            if battle.getStage() == "Semi-final":
+                positions[battle.getLoser()] = 3
+            elif battle.getStage() == "Quarter-final":
+                positions[battle.getLoser()] = 5
+        for place, driver in enumerate(self.__ranking, start = 1):
+            if driver not in positions:
+                positions[driver] = place      # 9th and below, by qualifying
+        results = []
+        for driver in sorted(positions, key = lambda d: (positions[d], self.__ranking.index(d))):
+            position = positions[driver]
+            points = Round.points_table.get(position, 0)
+            prize = Round.prize_table.get(position, 0)
+            if prize == 0 and self.__qualifying[driver] is not None:
+                prize = Round.appearance_fee
+            results.append((driver, position, points, prize))
+        return results
+
+
+class Season:
+    total_rounds = 4
+
+    def __init__(self, team, rivals, rng = None):
+        self.__team = team
+        self.__rivals = rivals
+        self.__rng = rng if rng is not None else random.Random()
+        self.__roundsDone = 0
+        self.__current = None
+        self.__history = []            
+
+# getters
+    def getTeam(self):
+        return self.__team
+
+    def getRivals(self):
+        return list(self.__rivals)
+
+    def getRoundsDone(self):
+        return self.__roundsDone
+
+    def getCurrentRound(self):
+        return self.__current
+
+    def isRoundInProgress(self):
+        return self.__current is not None
+
+    def isOver(self):
+        return self.__roundsDone >= Season.total_rounds
+
+    def getHistory(self):
+        return list(self.__history)
+
+    def getWageBill(self):
+        return sum(d.getWage() for d in self.__team.getDrivers())
+# getters
+
+    def startRound(self):
+        if self.isOver():
+            raise ValueError("The season is over.")
+        if self.__current is not None:
+            raise ValueError("A round is already running.")
+        wages = self.getWageBill()
+        if wages > self.__team.getBudget():
+            raise Bankrupt(
+                f"Driver wages are €{wages:,} but the team only has "
+                f"€{self.__team.getBudget():,}.\nThe team is bankrupt."
+            )
+        self.__team.spend(wages)
+        self.__current = Round(self.__roundsDone + 1, self.__team.getDrivers(),
+                               self.__rivals, self.__rng)
+        return wages
+
+    def finishRound(self):
+        results = self.__current.getResults()
+        earnings = 0
+        for driver, position, points, prize in results:
+            driver.addPoints(points)
+            if self.__current.isTeamDriver(driver):
+                earnings += prize
+        self.__team.earn(earnings)
+        winner = results[0][0]
+        self.__history.append(f"Round {self.__current.getNumber()}: won by {winner.getName()}")
+        self.__roundsDone += 1
+        self.__current = None
+        return results, earnings
+
+    def getStandings(self):
+        everyone = self.__team.getDrivers() + self.__rivals
+        return sorted(everyone, key = lambda d: (d.getPoints(), d.getBattleWins()), reverse = True)
+
+    def getChampion(self):
+        if not self.isOver():
+            raise ValueError("The season isn't over yet.")
+        return self.getStandings()[0]
+
+    def isTeamDriver(self, driver):
+        return driver in self.__team.getDrivers()
+
+    def resetAll(self):
+        self.__team.resetAll()
+        for rival in self.__rivals:
+            rival.resetAll()
+        self.__roundsDone = 0
+        self.__current = None
+        self.__history = []
+# v0.15
