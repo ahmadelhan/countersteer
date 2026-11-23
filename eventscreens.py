@@ -4,6 +4,8 @@ from tkinter import ttk, messagebox
 import theme
 from models import Season, Round
 from minigame import DriftRunWindow
+import animate # v0.19
+import sound # v0.19
 from exceptions import NoTyresLeft, CarDamaged, Bankrupt
 
 result_names = {1: "Winner", 2: "Runner-up", 3: "Semi-final", 5: "Quarter-final"}
@@ -16,10 +18,10 @@ def resultText(position, qualified):
 
 
 def button(parent, text, command, colour = theme.pink, fg = "white"):
-    return tk.Button(parent, text = text, command = command, font = theme.fonts["bodyBold"],
+    return animate.styleButton(tk.Button(parent, text = text, command = command, font = theme.fonts["bodyBold"],
                      bg = colour, fg = fg, activebackground = theme.cyan,
                      activeforeground = theme.bg, relief = "flat", bd = 0,
-                     padx = 16, pady = 8, cursor = "hand2")
+                     padx = 16, pady = 8, cursor = "hand2"), colour) # v0.19 hover glow + click pulse
 
 class EventTab(tk.Frame):
     box_width = 170
@@ -27,10 +29,10 @@ class EventTab(tk.Frame):
 
     def __init__(self, parent, app):
         super().__init__(parent, bg = theme.bg)
-        self.__app = app                
-        self.__log = []               
+        self.__app = app
+        self.__log = []
 
-        # round + stage 
+        # top: round + stage 
         top = tk.Frame(self, bg = theme.bg)
         top.pack(fill = "x", pady = (10, 6))
         family = theme.fonts["title"][0]
@@ -69,7 +71,7 @@ class EventTab(tk.Frame):
                                    highlightthickness = 0)
         self.__bracket.pack(fill = "both", expand = True)
 
-        # main button + log 
+        # bottom: main button + log 
         bottom = tk.Frame(self, bg = theme.bg)
         bottom.pack(fill = "x", pady = (8, 6))
         self.__actionButton = button(bottom, "", self.__action)
@@ -119,7 +121,7 @@ class EventTab(tk.Frame):
         if current is None:
             if season.isOver():
                 self.__stageLabel.config(text = "")
-                return "SEE FINAL STANDINGS"
+                return "SEE FINAL STANDINGS  ▶"
             self.__stageLabel.config(text = "Paddock")
             return f"START ROUND {season.getRoundsDone() + 1}  (pay wages)"
         queue = current.getQualifyingQueue()
@@ -129,7 +131,7 @@ class EventTab(tk.Frame):
         battle = current.getNextBattle()
         if battle is None:
             self.__stageLabel.config(text = "Results")
-            return "FINISH ROUND"
+            return "FINISH ROUND  ▶"
         self.__stageLabel.config(text = battle.getStage())
         if current.isTeamBattle(battle):  # v0.15
             a, b = battle.getDrivers()
@@ -215,7 +217,7 @@ class EventTab(tk.Frame):
                 score = battle.getScore(driver)
                 c.create_text(x + w - 8, rowY, text = "FF" if score is None else str(score),
                               anchor = "e", font = theme.fonts["mono"], fill = colour)
-                
+
     def __action(self):
         season = self.__season()
         current = season.getCurrentRound()
@@ -266,7 +268,7 @@ class EventTab(tk.Frame):
             messagebox.showerror("Car's totaled", f"{error}\n{driver.getName()} {consequence}")
         return False
 
-    # qualifying 
+    #  qualifying 
     def __qualify(self, driver):
         current = self.__season().getCurrentRound()
         if not self.__checkCar(driver, "won't start this round."):
@@ -286,6 +288,7 @@ class EventTab(tk.Frame):
             messagebox.showerror("Run not counted", str(error))
             return
         current.recordQualifying(driver, score)
+        if score >= 90: sound.playSfx("perfect") # v0.19
         self.__addLog(f"{driver.getName()} qualifies with {score} (your timing {timing}, "
                       f"rating {driver.getRating()})." + (f" {spins} spin(s)." if spins else ""))
         self.__afterQualifyingRun()
@@ -300,7 +303,7 @@ class EventTab(tk.Frame):
             self.__autoBattles()
         self.__app.refresh()
 
-    # ---------- battles ----------
+    # battles 
     def __battle(self, battle, driver):
         if not self.__checkCar(driver, "forfeits this battle."):
             battle.forfeit(driver)
@@ -317,11 +320,12 @@ class EventTab(tk.Frame):
             messagebox.showerror("Run not counted", str(error))
             return
         battle.record(driver, score)
+        if score >= 90: sound.playSfx("perfect") # v0.19
         self.__afterBattleRun(battle)
 
     def __afterBattleRun(self, battle):
         current = self.__season().getCurrentRound()
-        if len(current.needsTeamRun(battle)) == 0:      # both runs 
+        if len(current.needsTeamRun(battle)) == 0:      
             self.__logBattle(battle, current.completeBattle(battle))
             self.__autoBattles()
         self.__app.refresh()
@@ -343,7 +347,6 @@ class EventTab(tk.Frame):
         self.__autoBattles()
         self.__app.refresh()
 
-    # results
     def __finishRound(self):
         season = self.__season()
         number = season.getRoundsDone() + 1
@@ -376,8 +379,8 @@ class TeamOrdersDialog(tk.Toplevel):
 
         tk.Label(self, text = "TEAM ORDERS", font = theme.fonts["heading"], fg = theme.pink,
                  bg = theme.bg).pack(anchor = "w")
-        tk.Label(self, text = f"{battle.getStage()}: this is a Multi 21 standoff.\n"
-                              "Who goes?",
+        tk.Label(self, text = f"{battle.getStage()}: this a Multi 21 standoff.\n"
+                              "Who goes through?",
                  font = theme.fonts["body"], fg = theme.text, bg = theme.bg,
                  justify = "left").pack(anchor = "w", pady = (4, 12))
         row = tk.Frame(self, bg = theme.bg)
@@ -386,7 +389,7 @@ class TeamOrdersDialog(tk.Toplevel):
             button(row, f"{driver.getName()}\nrating {driver.getRating()}",
                    lambda d = driver: self.__choose(d)).pack(side = "left", expand = True,
                                                              fill = "x", padx = 4)
-        button(self, "LET THEM RACE", lambda: self.__choose(None),
+        button(self, "LET THEM RACE (simulated)", lambda: self.__choose(None),
                colour = theme.panel_light).pack(fill = "x", padx = 4, pady = (8, 0))
 
         self.update_idletasks()
@@ -400,7 +403,6 @@ class TeamOrdersDialog(tk.Toplevel):
         self.grab_release()
         self.destroy()
         self.__onChoice(self.__battle, driver)
-
 class SeasonEndScreen(tk.Frame):
 
     def __init__(self, master, season, bankrupt, onMainMenu, onNewSeason):
@@ -449,4 +451,4 @@ class SeasonEndScreen(tk.Frame):
         buttons = tk.Frame(self, bg = theme.bg)
         buttons.pack(side = "bottom", fill = "x", padx = 24, pady = 20)
         button(buttons, "MAIN MENU", onMainMenu, colour = theme.panel_light).pack(side = "left")
-        button(buttons, "NEW SEASON", onNewSeason).pack(side = "right")
+        button(buttons, "NEW SEASON  ▶", onNewSeason).pack(side = "right")
