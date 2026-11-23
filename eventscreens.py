@@ -27,10 +27,10 @@ class EventTab(tk.Frame):
 
     def __init__(self, parent, app):
         super().__init__(parent, bg = theme.bg)
-        self.__app = app     
-        self.__log = []                 # latest messages, newest last
+        self.__app = app                
+        self.__log = []               
 
-        #round + stage
+        # round + stage 
         top = tk.Frame(self, bg = theme.bg)
         top.pack(fill = "x", pady = (10, 6))
         family = theme.fonts["title"][0]
@@ -44,7 +44,7 @@ class EventTab(tk.Frame):
                                     fg = theme.muted, bg = theme.bg)
         self.__wageLabel.pack(side = "right")
 
-        # qualifying table + bracket
+        # qualifying table | bracket 
         middle = tk.Frame(self, bg = theme.bg)
         middle.pack(fill = "both", expand = True)
 
@@ -119,7 +119,7 @@ class EventTab(tk.Frame):
         if current is None:
             if season.isOver():
                 self.__stageLabel.config(text = "")
-                return "FINAL STANDINGS"
+                return "SEE FINAL STANDINGS"
             self.__stageLabel.config(text = "Paddock")
             return f"START ROUND {season.getRoundsDone() + 1}  (pay wages)"
         queue = current.getQualifyingQueue()
@@ -131,6 +131,9 @@ class EventTab(tk.Frame):
             self.__stageLabel.config(text = "Results")
             return "FINISH ROUND"
         self.__stageLabel.config(text = battle.getStage())
+        if current.isTeamBattle(battle):  # v0.15
+            a, b = battle.getDrivers()
+            return f"TEAM ORDERS: {a.getName()} vs {b.getName()}"
         driver = current.needsTeamRun(battle)[0]
         others = [d for d in battle.getDrivers() if d is not driver]
         return f"{battle.getStage().upper()}: {driver.getName()} vs {others[0].getName()}"
@@ -174,14 +177,14 @@ class EventTab(tk.Frame):
             for slot, y in enumerate(ys):
                 battle = byStage[stage][slot] if slot < len(byStage[stage]) else None
                 self.__drawBox(c, x, y, battle, current)
-                if stage != "Final":        # line to next box
+                if stage != "Final":        # line to the next round's box
                     nextX, nextYs = columns[Round.stages[Round.stages.index(stage) + 1]]
                     targetY = nextYs[slot // 2] + EventTab.box_height // 2
                     midY = y + EventTab.box_height // 2
                     c.create_line(x + EventTab.box_width, midY, x + EventTab.box_width + 11, midY,
                                   x + EventTab.box_width + 11, targetY, nextX, targetY,
                                   fill = theme.panel_light, width = 2)
-        # champion
+        # champion of the round
         final = byStage["Final"][0] if byStage["Final"] else None
         winner = final.getWinner() if final is not None else None
         c.create_text(398 + EventTab.box_width // 2, 215, text = "ROUND WINNER",
@@ -204,11 +207,15 @@ class EventTab(tk.Frame):
                 colour = theme.muted
             c.create_text(x + 8, rowY, text = driver.getName(), anchor = "w",
                           font = theme.fonts["small"], fill = colour)
-            if battle.hasRun(driver):
+            if battle.isTeamOrder():  # v0.15
+                if battle.getWinner() is driver:
+                    c.create_text(x + w - 8, rowY, text = "TO", anchor = "e",
+                                  font = theme.fonts["mono"], fill = colour)
+            elif battle.hasRun(driver):
                 score = battle.getScore(driver)
                 c.create_text(x + w - 8, rowY, text = "FF" if score is None else str(score),
                               anchor = "e", font = theme.fonts["mono"], fill = colour)
-
+                
     def __action(self):
         season = self.__season()
         current = season.getCurrentRound()
@@ -225,6 +232,8 @@ class EventTab(tk.Frame):
         battle = current.getNextBattle()
         if battle is None:
             self.__finishRound()
+        elif current.isTeamBattle(battle):  # v0.15
+            TeamOrdersDialog(self.__app.root, battle, self.__teamOrders)
         else:
             self.__battle(battle, current.needsTeamRun(battle)[0])
 
@@ -234,7 +243,7 @@ class EventTab(tk.Frame):
         if notReady and not messagebox.askyesno(
                 "Drivers not ready",
                 "These drivers have no tyres or a damaged car and won't start:\n\n"
-                + "\n".join(notReady) + "\n\nStart the round anyway? (No = go to the shop)"):
+                + "\n".join(notReady) + "\n\nStart the round anyway? (No = go to the Shop first)"):
             return
         try:
             wages = season.startRound()
@@ -268,16 +277,17 @@ class EventTab(tk.Frame):
         DriftRunWindow(self.__app.root, driver,
                        lambda score, spins: self.__qualifyingDone(driver, score, spins))
 
-    def __qualifyingDone(self, driver, score, spins):
+    def __qualifyingDone(self, driver, timing, spins):
         current = self.__season().getCurrentRound()
+        score = driver.blendScore(timing)  # v0.15 timing + driver rating
         try:
             driver.completeRun(score, spins)
         except (ValueError, NoTyresLeft) as error:
             messagebox.showerror("Run not counted", str(error))
             return
         current.recordQualifying(driver, score)
-        self.__addLog(f"{driver.getName()} qualifies with {score}." +
-                      (f" {spins} spin(s)." if spins else ""))
+        self.__addLog(f"{driver.getName()} qualifies with {score} (your timing {timing}, "
+                      f"rating {driver.getRating()})." + (f" {spins} spin(s)." if spins else ""))
         self.__afterQualifyingRun()
 
     def __afterQualifyingRun(self):
@@ -290,7 +300,7 @@ class EventTab(tk.Frame):
             self.__autoBattles()
         self.__app.refresh()
 
-    # battles 
+    # ---------- battles ----------
     def __battle(self, battle, driver):
         if not self.__checkCar(driver, "forfeits this battle."):
             battle.forfeit(driver)
@@ -299,7 +309,8 @@ class EventTab(tk.Frame):
         DriftRunWindow(self.__app.root, driver,
                        lambda score, spins: self.__battleRunDone(battle, driver, score, spins))
 
-    def __battleRunDone(self, battle, driver, score, spins):
+    def __battleRunDone(self, battle, driver, timing, spins):
+        score = driver.blendScore(timing)  # v0.15 timing + driver rating
         try:
             driver.completeRun(score, spins)
         except (ValueError, NoTyresLeft) as error:
@@ -310,12 +321,29 @@ class EventTab(tk.Frame):
 
     def __afterBattleRun(self, battle):
         current = self.__season().getCurrentRound()
-        if len(current.needsTeamRun(battle)) == 0:      # both runs
+        if len(current.needsTeamRun(battle)) == 0:      # both runs 
             self.__logBattle(battle, current.completeBattle(battle))
             self.__autoBattles()
         self.__app.refresh()
 
-    # results 
+    def __teamOrders(self, battle, choice):  # v0.15
+        current = self.__season().getCurrentRound()
+        if choice is not None:
+            current_winner = battle.awardTo(choice)
+            self.__addLog(f"{battle.getStage()}: team orders, {current_winner.getName()} goes through.")
+        else:
+            for driver in battle.getDrivers():
+                if not self.__checkCar(driver, "forfeits this battle."):
+                    battle.forfeit(driver)
+                    continue
+                score = current.simulateRun(driver)
+                driver.completeRun(score, 0)
+                battle.record(driver, score)
+            self.__logBattle(battle, battle.decide())
+        self.__autoBattles()
+        self.__app.refresh()
+
+    # results
     def __finishRound(self):
         season = self.__season()
         number = season.getRoundsDone() + 1
@@ -335,6 +363,43 @@ class EventTab(tk.Frame):
         messagebox.showinfo(f"Round {number} results", "\n".join(lines))
         if season.isOver():
             self.__app.endSeason(bankrupt = False)
+
+class TeamOrdersDialog(tk.Toplevel):
+    def __init__(self, master, battle, onChoice):
+        super().__init__(master)
+        self.__onChoice = onChoice
+        self.__battle = battle
+        self.title("Team orders")
+        self.configure(bg = theme.bg, padx = 24, pady = 18)
+        self.resizable(False, False)
+        a, b = battle.getDrivers()
+
+        tk.Label(self, text = "TEAM ORDERS", font = theme.fonts["heading"], fg = theme.pink,
+                 bg = theme.bg).pack(anchor = "w")
+        tk.Label(self, text = f"{battle.getStage()}: this is a Multi 21 standoff.\n"
+                              "Who goes?",
+                 font = theme.fonts["body"], fg = theme.text, bg = theme.bg,
+                 justify = "left").pack(anchor = "w", pady = (4, 12))
+        row = tk.Frame(self, bg = theme.bg)
+        row.pack(fill = "x")
+        for driver in (a, b):
+            button(row, f"{driver.getName()}\nrating {driver.getRating()}",
+                   lambda d = driver: self.__choose(d)).pack(side = "left", expand = True,
+                                                             fill = "x", padx = 4)
+        button(self, "LET THEM RACE", lambda: self.__choose(None),
+               colour = theme.panel_light).pack(fill = "x", padx = 4, pady = (8, 0))
+
+        self.update_idletasks()
+        x = master.winfo_rootx() + (master.winfo_width() - self.winfo_reqwidth()) // 2
+        y = master.winfo_rooty() + (master.winfo_height() - self.winfo_reqheight()) // 3
+        self.geometry(f"+{max(x, 0)}+{max(y, 0)}")
+        self.transient(master)
+        self.grab_set()
+
+    def __choose(self, driver):
+        self.grab_release()
+        self.destroy()
+        self.__onChoice(self.__battle, driver)
 
 class SeasonEndScreen(tk.Frame):
 

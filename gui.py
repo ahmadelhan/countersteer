@@ -110,7 +110,7 @@ class Countersteer:
             self.root.config(menu = menuBar)
     
             teamMenu = tk.Menu(menuBar, tearoff = 0)
-            self.teamMenu = teamMenu # v0.15 locked during round
+            self.teamMenu = teamMenu # v0.15 locked during rounds
             menuBar.add_cascade(label = "Team", menu = teamMenu)
             teamMenu.add_command(label = "New sign ons...", command = self.openSignDialog)
             teamMenu.add_command(label = "Release current driver", command = self.releaseCurrent)
@@ -186,7 +186,7 @@ class Countersteer:
         bottom.pack(fill = "x", pady = (0, 10))
         nav, self.garagePosLabel = self.makeNavBar(bottom)
         nav.pack(side = "left")
-        makeButton(bottom, "PRACTICE RUN", self.startRun, # v0.15
+        makeButton(bottom, "PRACTICE RUN", self.startRun, # v0.15 EVENT tab
                     colour=theme.pink).pack(side = "right", ipadx = 10, ipady = 4)
         
     def buildShopTab(self):
@@ -483,9 +483,10 @@ class Countersteer:
         self.runningDriver = driver
         DriftRunWindow(self.root, driver, self.finishRun)
 
-    def finishRun(self, score, spins):
+    def finishRun(self, timing, spins):
         driver = self.runningDriver
         self.runningDriver = None
+        score = driver.blendScore(timing)  # v0.15 timing + driver rating
         try:
             driver.completeRun(score, spins)
         except ValueError as error:
@@ -494,7 +495,7 @@ class Countersteer:
         except NoTyresLeft as error:
             messagebox.showerror("No tyres left", str(error))
             return
-        message = f"{driver.getName()} scored {score}."
+        message = f"{driver.getName()} scored {score} (your timing {timing}, rating {driver.getRating()})."  # v0.15
         if spins:
             message += f" {spins} spin(s). Poor performance."
         self.setStatus(message)
@@ -581,7 +582,7 @@ class Countersteer:
         self.setStatus(f"Released {driver.getName()}.")
         self.refresh()
 
-    def resetTeam(self): # v0.15 restarts season
+    def resetTeam(self): # v0.15 restarts the season
         if messagebox.askyesno("Restart season",
                                "Restart the season? Budget, points, scores and cars all reset."):
             self.season.resetAll()
@@ -609,6 +610,9 @@ class Countersteer:
             "EVENT: press the big button to run each round: pay wages, qualify, "
             f"then battle through the top-8 bracket. {Season.total_rounds} rounds make a season; "
             "most points wins the title. Run out of money for wages and it's game over.\n\n"
+            "You're the crew chief: a run's score is half your timing and half the driver's "
+            "rating (skill, power and tune), so drafting and upgrades matter. When two of your "
+            "drivers meet, you give team orders.\n\n"  # v0.15
             "QUALIFYING RUN: press SPACE when the pink marker is in the skillcheck. "
             "Three sections: entry, angle, exit. Missing any skillcheck spins the car, causing mechanical damage.\n\n"
             "SHOP: buy tyres, repair damage and upgrade tune. Better tuning and skill "

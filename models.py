@@ -109,6 +109,7 @@ class Car:
 class Driver:
     wear_per_run = 3
     spin_damage = 15
+    timing_weight = 0.5     # v0.15 50% timing, 50% driver + car
     
     def __init__(self, name, skill, wage, car):
         if name.strip() == "":
@@ -173,6 +174,16 @@ class Driver:
         self.__car.useTyres()
         self.__car.damage(Driver.wear_per_run + spins * Driver.spin_damage)
         
+    def getRating(self):  # v0.15
+        car = self.__car
+        rating = self.__skill * 0.65 + car.getHorsepower() / 20 + car.getTuneLevel() * 4
+        return min(100, round(rating))
+
+    def blendScore(self, timing, bonus = 0):  # v0.15
+        rating = min(100, self.getRating() + bonus)
+        score = timing * Driver.timing_weight + rating * (1 - Driver.timing_weight)
+        return max(0, min(100, round(score)))
+
     def sweetSpotWidth(self):
         width = (18 + self.__skill * 0.15
                  + self.__car.getTuneLevel() * 3
@@ -444,6 +455,18 @@ class Battle:
     def forfeit(self, driver):
         self.record(driver, None)
 
+    def awardTo(self, driver):  # v0.15 team orders
+        if driver not in self.__drivers:
+            raise ValueError(f"{driver.getName()} isn't in this battle.")
+        if self.__winner is not None:
+            raise ValueError("Battle's been decided.")
+        self.__winner = driver
+        driver.addBattleWin()
+        return driver
+
+    def isTeamOrder(self):  # v0.15
+        return self.__winner is not None and len(self.__scores) == 0
+
     def decide(self):
         higher, lower = self.__drivers
         if higher not in self.__scores or lower not in self.__scores:
@@ -453,7 +476,7 @@ class Battle:
         if lowerScore is not None and (higherScore is None or lowerScore > higherScore):
             self.__winner = lower
         else:
-            self.__winner = higher         
+            self.__winner = higher          
         self.__winner.addBattleWin()
         return self.__winner
 
@@ -462,9 +485,10 @@ class Round:
     bracket_size = 8
     stages = ["Quarter-final", "Semi-final", "Final"]
     seed_pairs = [(0, 7), (3, 4), (1, 6), (2, 5)]       # 1v8, 4v5, 2v7, 3v6
-    points_table = {1: 25, 2: 18, 3: 12, 5: 6}      
-    prize_table = {1: 10000, 2: 6000, 3: 4000, 5: 2500}
-    appearance_fee = 750                                # for drivers who ran but missed top 8
+    points_table = {1: 25, 2: 18, 3: 12, 5: 6}       
+    prize_table = {1: 7000, 2: 4500, 3: 3000, 5: 1800}  # v0.15 lowered
+    appearance_fee = 500                                # v0.15 lowered
+    rival_improvement = 3                               # v0.15
 
     def __init__(self, number, teamDrivers, rivals, rng):
         self.__number = number
@@ -472,9 +496,9 @@ class Round:
         self.__rivals = list(rivals)
         self.__rng = rng
         self.__qualifying = {}          # driver -> score, None = did not start
-        self.__ranking = []            
+        self.__ranking = []           
         self.__stageIndex = 0
-        self.__battles = []           
+        self.__battles = []             
 
 # getters
     def getNumber(self):
@@ -505,23 +529,27 @@ class Round:
         return Round.stages[min(self.__stageIndex, len(Round.stages) - 1)]
 # getters
 
+    def getRivalBonus(self):  # v0.15
+        return (self.__number - 1) * Round.rival_improvement
+
     def simulateRun(self, driver):
-        base = 32 + driver.getSkill() * 0.5 + driver.getCar().getHorsepower() / 40
-        score = self.__rng.gauss(base, 7)
-        if self.__rng.random() < 0.08:          # rivals spin sometimes too
-            score *= 0.5
-        return max(0, min(100, round(score)))
+        # v0.15
+        timing = self.__rng.gauss(78, 10)
+        if self.__rng.random() < 0.08:        
+            timing *= 0.5
+        timing = max(0, min(100, timing))
+        bonus = 0 if driver in self.__teamDrivers else self.getRivalBonus()
+        return driver.blendScore(timing, bonus)
 
     # qualifying 
     def recordQualifying(self, driver, score):
-        """score is None if the driver couldn't start (no tyres / damaged)."""
         if driver not in self.__teamDrivers:
             raise ValueError(f"{driver.getName()} isn't on your team.")
         self.__qualifying[driver] = score
 
     def finishQualifying(self):
         if len(self.getQualifyingQueue()) > 0:
-            raise ValueError("Every team driver must run (or be marked as not starting) first.")
+            raise ValueError("Every team driver must run first.")
         for rival in self.__rivals:
             self.__qualifying[rival] = self.simulateRun(rival)
         everyone = self.__teamDrivers + self.__rivals
@@ -539,7 +567,6 @@ class Round:
         return [b for b in self.__battles if b.getStage() == stage]
 
     def getNextBattle(self):
-
         if not self.isQualifyingDone():
             return None
         for battle in self.__currentStageBattles():
@@ -556,9 +583,12 @@ class Round:
     def needsTeamRun(self, battle):
         return [d for d in battle.getDrivers() if d in self.__teamDrivers and not battle.hasRun(d)]
 
+    def isTeamBattle(self, battle):  # v0.15 immersion
+        return all(d in self.__teamDrivers for d in battle.getDrivers())
+
     def completeBattle(self, battle):
         if len(self.needsTeamRun(battle)) > 0:
-            raise ValueError("Your driver has to run before he starts battling.")
+            raise ValueError("Your driver has to run before the battle can be decided.")
         for driver in battle.getDrivers():
             if not battle.hasRun(driver):
                 battle.record(driver, self.simulateRun(driver))
@@ -580,7 +610,7 @@ class Round:
                 positions[battle.getLoser()] = 5
         for place, driver in enumerate(self.__ranking, start = 1):
             if driver not in positions:
-                positions[driver] = place      # 9th and below, by qualifying
+                positions[driver] = place    
         results = []
         for driver in sorted(positions, key = lambda d: (positions[d], self.__ranking.index(d))):
             position = positions[driver]
@@ -601,8 +631,7 @@ class Season:
         self.__rng = rng if rng is not None else random.Random()
         self.__roundsDone = 0
         self.__current = None
-        self.__history = []            
-
+        self.__history = []           
 # getters
     def getTeam(self):
         return self.__team
@@ -631,14 +660,14 @@ class Season:
 
     def startRound(self):
         if self.isOver():
-            raise ValueError("The season is over.")
+            raise ValueError("The season's over.")
         if self.__current is not None:
-            raise ValueError("A round is already running.")
+            raise ValueError("A round's already running.")
         wages = self.getWageBill()
         if wages > self.__team.getBudget():
             raise Bankrupt(
                 f"Driver wages are €{wages:,} but the team only has "
-                f"€{self.__team.getBudget():,}.\nThe team is bankrupt."
+                f"€{self.__team.getBudget():,}.\nThe team's got no money."
             )
         self.__team.spend(wages)
         self.__current = Round(self.__roundsDone + 1, self.__team.getDrivers(),
