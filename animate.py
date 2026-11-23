@@ -9,7 +9,7 @@ pulse_ms = 220          # how long the click fades
 count_ms = 450          # how long number takes to count new value
 fade_ms = 140           # screen transition
 
-_running = {}           # (widget, what) -> after id, so a new animation replaces an old one
+_running = {}           # (widget, what) -> (widget, after id), so a new animation replaces an old one # v0.20 keeps the widget
 _transitionBusy = False
 
 
@@ -41,7 +41,7 @@ def _cancel(widget, what):
     key = (str(widget), what)
     if key in _running:
         try:
-            widget.after_cancel(_running.pop(key))
+            widget.after_cancel(_running.pop(key)[1]) # v0.20 [1] after id
         except tk.TclError:
             pass
 
@@ -57,7 +57,7 @@ def animate(widget, what, duration, step, done = None):
             _running.pop((str(widget), what), None)
             return
         if frame < frames:
-            _running[(str(widget), what)] = widget.after(frame_ms, lambda: tick(frame + 1))
+            _running[(str(widget), what)] = (widget, widget.after(frame_ms, lambda: tick(frame + 1))) # v0.20 + widget
         else:
             _running.pop((str(widget), what), None)
             if done is not None:
@@ -137,9 +137,9 @@ def transition(root, build):
 
 
 def stopAll():
-    for (name, what), afterId in list(_running.items()):
-        try:
-            tk._default_root.after_cancel(afterId)
-        except (tk.TclError, AttributeError):
+    for widget, afterId in list(_running.values()): # v0.20
+        try:                                       
+            widget.after_cancel(afterId)
+        except tk.TclError:
             pass
     _running.clear()

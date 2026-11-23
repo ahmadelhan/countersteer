@@ -11,11 +11,14 @@ from data import createRivals  # v0.15
 from models import Driver, Team, Car, Draft  # v0.13 added Draft
 from models import Season  # v0.15
 from minigame import DriftRunWindow
+from strategy import StrategyDialog # v0.20
 from menu import MainMenu # v0.12
 from teamselect import TeamSelectScreen, DraftScreen  # v0.13
 import carcard 
 import animate # v0.19
 import sound # v0.19
+from musicplayer import MusicPlayer # v0.20
+from loading import LoadingScreen, bootTasks, teamTasks # v0.20
 from eventscreens import EventTab, SeasonEndScreen  # v0.15
 from exceptions import ( 
     NoTyresLeft,
@@ -56,6 +59,7 @@ class Countersteer:
         self.season = Season(team, createRivals()) # v0.15
         self.current = 0
         self.runningDriver = None
+        self.runningStrategy = None # v0.20
         self.turntables = {}   # v0.14
         self.shownBudget = None # v0.19 
 
@@ -159,6 +163,7 @@ class Countersteer:
         self.budgetLabel = tk.Label(right, text = "", font = theme.fonts["monoBig"],
                                     fg=theme.cyan, bg=theme.bg)
         self.budgetLabel.pack(anchor = "e")
+        MusicPlayer(right).pack(anchor = "e", pady = (2, 0)) # v0.20 mini player
 
 
     def makePanel(self, parent):
@@ -508,15 +513,20 @@ class Countersteer:
         except CarDamaged as error:
             messagebox.showerror("Car's totaled", str(error))
             return
+        StrategyDialog(self.root, driver, lambda strategy: self.startPractice(driver, strategy)) # v0.20
+
+    def startPractice(self, driver, strategy): # v0.20
         self.runningDriver = driver
-        DriftRunWindow(self.root, driver, self.finishRun)
+        self.runningStrategy = strategy
+        DriftRunWindow(self.root, driver, self.finishRun, strategy = strategy, title = "Practice run")
 
     def finishRun(self, timing, spins):
         driver = self.runningDriver
+        strategy = self.runningStrategy # v0.20
         self.runningDriver = None
-        score = driver.blendScore(timing)  # v0.15 timing + driver rating
+        score = strategy.finalScore(driver.blendScore(timing), timing)  # v0.15 timing + driver rating # v0.20 + strategy
         try:
-            driver.completeRun(score, spins)
+            driver.completeRun(score, spins, strategy) # v0.20 strategy
         except ValueError as error:
             messagebox.showerror("Invalid score", str(error))
             return
@@ -645,6 +655,8 @@ class Countersteer:
             "drivers meet, you give team orders.\n\n"  # v0.15
             "QUALIFYING RUN: press SPACE when the pink marker is in the skillcheck. "
             "Three sections: entry, angle, exit. Missing any skillcheck spins the car, causing mechanical damage.\n\n"
+            "STRATEGY: before every run pick a line (Safe, Balanced, Aggressive), used or "  # v0.20
+            "fresh tyres, and in battles whether to put pressure on the lead car.\n\n"
             "SHOP: buy tyres, repair damage and upgrade tune. Better tuning and skill "
             "make the skillcheck easier.\n\n"
             f"A car needs tyres and be at least {Car.min_run_condition}% condition to run.")
@@ -726,9 +738,19 @@ def setWindowIcon(root): # v0.18
     if images:
         root.iconphoto(True, *images)
 
-def quitGame(root): # v0.16
+_quitting = False # v0.20
+
+def quitGame(root): # v0.16 # v0.20 tears down after the click that asked for it has finished
+    global _quitting
+    if _quitting:
+        return
+    _quitting = True
     animate.stopAll() # v0.19
     sound.closeAll()  # v0.19
+    root.withdraw()   # v0.20 window disappears straight away
+    root.after(10, lambda: closeDown(root)) # v0.20
+
+def closeDown(root): # v0.20 the screen that called quitGame is no longer mid-call, so gc can free its images
     clearWindow(root)
     carcard.clearFrames()   
     gc.collect()            
@@ -745,6 +767,26 @@ def clearWindow(root): # v0.12
         widget.destroy()
 
 
+def showBootLoading(root): # v0.20
+    clearWindow(root)
+    sound.playMusic("menu")
+    LoadingScreen(root, car_catalogue["Nissan Skyline R34"][2], bootTasks(car_catalogue),
+                  onDone = lambda: showMainMenu(root)).pack(fill = "both", expand = True)
+    animate.fadeIn(root)
+
+def showGameLoading(root, team): # v0.20 
+    def build():
+        clearWindow(root)
+        sound.playMusic("game")
+        lead = team.getDriver(0)
+        LoadingScreen(root, lead.getCar().getImagePath(), teamTasks(team),
+                      onDone = lambda: startGame(root, team),
+                      heading = (f"ROUND 1 OF {Season.total_rounds}", team.getName(),
+                                 "Heading up the pass..."),
+                      caption = f"{lead.getName()}  ·  {lead.getCar().getModel()}"
+                      ).pack(fill = "both", expand = True)
+    animate.transition(root, build)
+
 def showMainMenu(root): # v0.12
     def build(): # v0.19 fade out fade in
         clearWindow(root)
@@ -757,7 +799,7 @@ def showTeamSelect(root):  # v0.13
     def build(): # v0.19
         clearWindow(root)
         TeamSelectScreen(root, createStartingTeam(), draft_budget,
-                         onPreset = lambda team: startGame(root, team),
+                         onPreset = lambda team: showGameLoading(root, team), # v0.20 was startGame
                          onCreate = lambda: showDraft(root),
                          onBack = lambda: showMainMenu(root)).pack(fill = "both", expand = True)
         sound.playMusic("menu") # v0.19
@@ -767,7 +809,7 @@ def showDraft(root):  # v0.13
     def build(): # v0.19
         clearWindow(root)
         DraftScreen(root, Draft(createDraftPool(), draft_budget),
-                    onDone = lambda team: startGame(root, team),
+                    onDone = lambda team: showGameLoading(root, team), # v0.20 was startGame
                     onBack = lambda: showTeamSelect(root)).pack(fill = "both", expand = True)
         sound.playMusic("menu") # v0.19
     animate.transition(root, build) # v0.19
@@ -802,5 +844,5 @@ if __name__ == "__main__":
     window.bind_all("<KeyPress-m>", muteKey) # v0.19
     window.bind_all("<KeyPress-M>", muteKey) # v0.19
     sound.start(window) # v0.19
-    showMainMenu(window)
+    showBootLoading(window) # v0.20 was showMainMenu(window)
     window.mainloop()
